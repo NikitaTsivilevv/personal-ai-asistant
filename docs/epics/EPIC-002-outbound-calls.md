@@ -1,6 +1,6 @@
 # EPIC-002 - Outbound Calls
 
-**Status:** Spec and plan drafted (2026-06-11), implementation not started
+**Status:** Code-complete skeleton (2026-06-11): call state machine, agent core with hardcoded AI disclosure (ES/EN/RU), policy-wired tools, Pipecat 1.3 pipeline (verified against installed package), Twilio dial-out + webhooks, retry/backoff, crash-recovery sweeper, post-call summary, live-call web page, per-turn metrics. NOT verified with real audio/telephony - plan phases A (providers, hello-world call) and D (real restaurant booking) blocked on Twilio/Deepgram/Cartesia/LLM registrations.
 **Owner:** Nikita
 **Goal:** Enable the assistant to place outbound calls, converse safely, stream transcript/events, and produce a summary.
 

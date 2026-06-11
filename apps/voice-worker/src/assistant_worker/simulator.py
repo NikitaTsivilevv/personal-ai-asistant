@@ -20,38 +20,10 @@ from assistant_shared.events import RunEvent, RunEventType
 from assistant_shared.queue import QueuedRun, wait_control
 from assistant_shared.schemas import RunStatus, Speaker
 
+from .events_client import RunClient
 from .settings import WorkerSettings
 
 logger = logging.getLogger(__name__)
-
-
-class RunClient:
-    """Pushes run events to the internal API."""
-
-    def __init__(self, http: httpx.AsyncClient, settings: WorkerSettings, run_id: str) -> None:
-        self._http = http
-        self._settings = settings
-        self._run_id = run_id
-
-    async def send(self, event: RunEvent) -> dict:
-        resp = await self._http.post(
-            f"{self._settings.api_base_url}/internal/runs/{self._run_id}/events",
-            json=event.model_dump(mode="json"),
-            headers={"X-Internal-Token": self._settings.internal_api_token},
-        )
-        resp.raise_for_status()
-        return resp.json()
-
-    async def status(self, status: RunStatus) -> None:
-        await self.send(RunEvent(type=RunEventType.status_changed, data={"status": status.value}))
-
-    async def say(self, seq: int, speaker: Speaker, text: str) -> None:
-        await self.send(
-            RunEvent(
-                type=RunEventType.transcript_segment,
-                data={"seq": seq, "speaker": speaker.value, "text": text, "ts_ms": seq * 1500},
-            )
-        )
 
 
 async def fetch_task(http: httpx.AsyncClient, settings: WorkerSettings, task_id: str) -> dict:

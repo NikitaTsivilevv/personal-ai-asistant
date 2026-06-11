@@ -24,3 +24,14 @@ class Settings(BaseSettings):
     api_port: int = 8000
 
     echo_sql: bool = False
+
+    # Comma-separated origins for the web live-call page.
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+
+    # Twilio webhook signature validation; skipped while PLACEHOLDER (dev).
+    twilio_auth_token: str = "PLACEHOLDER"
+
+    # Crash recovery (EPIC-002 spec, acceptance criterion 5): runs with no
+    # events for this long are marked failed. 0 = sweeper disabled (tests).
+    stale_run_timeout_s: int = 0
+    stale_run_sweep_interval_s: int = 60

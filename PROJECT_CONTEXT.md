@@ -1,7 +1,7 @@
 # PROJECT_CONTEXT.md - Personal AI Assistant
 
 **Last refreshed:** 2026-06-11 (evening session)
-**Status:** Stage 1 (EPIC-001) implemented on branch `feature/stage1-control-plane` (GitHub: NikitaTsivilevv/personal-ai-asistant). Monorepo scaffolded, schema v1 + migrations, full control-loop API, stub worker, policy stub, Telegram bot, web SSE stub; 26 tests pass. Blocked on service registrations (Telegram bot token, Neon/Supabase, Upstash, Anthropic key) - all configs are placeholders in `.env.example`. Next: register services, verify acceptance criteria live from a phone, then EPIC-002.
+**Status:** Stage 1 (EPIC-001) implemented (PR #1, branch `feature/stage1-control-plane`); Stage 2 (EPIC-002) code-complete skeleton on `feature/stage2-outbound-calls` (PR #2, stacked on stage 1): Pipecat 1.3 pipeline, call state machine, disclosure-first agent, policy-wired tools, Twilio dial-out/webhooks, retry, crash recovery, live-call web page. 59 tests pass. Everything blocked on service registrations (Telegram, Neon/Supabase, Upstash, Anthropic, Twilio, Deepgram, Cartesia, conversation LLM) - placeholders in `.env.example`. Next: register services, live-verify stage 1 acceptance from phone, then stage 2 plan phase A (hello-world call).
 
 ## Current Goal
 
@@ -69,7 +69,8 @@ For the next session, read:
 
 Immediate next steps:
 
-1. Register services: Telegram bot (@BotFather), Neon/Supabase Postgres, Upstash Redis, Anthropic API key; fill `.env` from `.env.example`.
-2. Run api + worker + bot locally, verify EPIC-001 acceptance criteria 1-4 from a phone.
-3. Merge `feature/stage1-control-plane`, then start EPIC-002 (recheck Deepgram/Cartesia/LLM pricing first - see open-questions.md).
+1. Merge PR #1 (stage 1) then PR #2 (stage 2 skeleton).
+2. Register services: Telegram bot (@BotFather), Neon/Supabase Postgres, Upstash Redis, Anthropic key, Twilio (+ Spanish number), Deepgram, Cartesia, conversation LLM key; fill `.env` from `.env.example`. Recheck provider pricing (stage 2 plan A1) and record in `docs/research/`.
+3. Live-verify EPIC-001 acceptance criteria 1-4 from a phone (simulate mode).
+4. Stage 2 plan A3: hello-world call via Cloudflare Tunnel (`WORKER_MODE=call`, `uv sync --all-packages --extra call`), then phase D real booking.
 

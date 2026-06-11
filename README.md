@@ -34,10 +34,14 @@ cp .env.example .env            # fill in real values; sqlite/local-redis defaul
 
 ```bash
 uv run assistant-api            # API on http://127.0.0.1:8000 (docs at /docs)
-uv run assistant-worker         # stub worker consuming the Redis task queue
+uv run assistant-worker         # worker: WORKER_MODE=simulate (default) | call
 uv run assistant-bot            # Telegram bot (needs TELEGRAM_BOT_TOKEN)
-cd apps/web && npm install && npm run dev   # web stub on :3000
+cd apps/web && npm install && npm run dev   # live-call page on :3000 (/runs/<run_id>)
 ```
+
+Real calls (`WORKER_MODE=call`) additionally need `uv sync --all-packages --extra call`
+(installs Pipecat), Twilio/Deepgram/Cartesia/LLM keys, and a public wss:// tunnel to the
+worker's `/ws` (see `.env.example`).
 
 Migrations (Postgres or sqlite via `DATABASE_URL`):
 

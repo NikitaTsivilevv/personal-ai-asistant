@@ -8,6 +8,7 @@ dependencies = [
     "uvicorn[standard]>=0.32",
     "pydantic-settings>=2.6",
     "sse-starlette>=2.1",
+    "python-multipart>=0.0.18",
     "assistant-shared",
     "assistant-database",
     "assistant-policy",

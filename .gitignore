@@ -25,6 +25,8 @@ out/
 # Local data
 *.db
 *.sqlite3
+logs/
+.tools/
 
 # OS / editor
 .DS_Store

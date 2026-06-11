@@ -10,7 +10,11 @@ Conventions:
 
 from __future__ import annotations
 
+import time
+from urllib.parse import urlparse
+
 import redis.asyncio as aioredis
+from redis.exceptions import TimeoutError
 from pydantic import BaseModel
 
 TASK_QUEUE_KEY = "queue:task_runs"
@@ -30,15 +34,31 @@ class QueuedRun(BaseModel):
 
 
 class ControlMessage(BaseModel):
-    """Message delivered to a waiting worker via the run control list."""
+    """Message delivered to the worker via the run control list.
 
-    type: str  # "approval_resolved" | "cancel"
+    Types:
+    - "approval_resolved": approval_id + status filled
+    - "cancel": abort the task (stage 1 semantics)
+    - "hangup": end the live call gracefully (wrap-up, then summary)
+    - "whisper": text injected into the agent context mid-call
+    """
+
+    type: str
     approval_id: str | None = None
     status: str | None = None
+    text: str | None = None
 
 
 def create_redis(url: str) -> aioredis.Redis:
     return aioredis.from_url(url, decode_responses=True)
+
+
+def describe_redis_target(url: str) -> str:
+    parsed = urlparse(url)
+    if not parsed.hostname:
+        return parsed.scheme or "redis"
+    port = f":{parsed.port}" if parsed.port else ""
+    return f"{parsed.scheme}://{parsed.hostname}{port}"
 
 
 async def enqueue_run(redis: aioredis.Redis, msg: QueuedRun) -> None:
@@ -46,7 +66,10 @@ async def enqueue_run(redis: aioredis.Redis, msg: QueuedRun) -> None:
 
 
 async def dequeue_run(redis: aioredis.Redis, timeout: int = 5) -> QueuedRun | None:
-    item = await redis.brpop(TASK_QUEUE_KEY, timeout=timeout)
+    try:
+        item = await redis.brpop(TASK_QUEUE_KEY, timeout=timeout)
+    except TimeoutError:
+        return None
     if item is None:
         return None
     _, raw = item
@@ -60,8 +83,17 @@ async def send_control(redis: aioredis.Redis, run_id: str, msg: ControlMessage) 
 async def wait_control(
     redis: aioredis.Redis, run_id: str, timeout: int = 5
 ) -> ControlMessage | None:
-    item = await redis.brpop(run_control_key(run_id), timeout=timeout)
-    if item is None:
-        return None
-    _, raw = item
-    return ControlMessage.model_validate_json(raw)
+    key = run_control_key(run_id)
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        try:
+            item = await redis.brpop(key, timeout=max(1, min(5, int(remaining))))
+        except TimeoutError:
+            continue
+        if item is None:
+            continue
+        _, raw = item
+        return ControlMessage.model_validate_json(raw)
