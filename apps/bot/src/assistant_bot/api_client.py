@@ -54,5 +54,36 @@ class ApiClient:
         resp.raise_for_status()
         return resp.json()
 
+    async def list_facts(self) -> list[dict]:
+        resp = await self._http.get(f"{self._base}/facts")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def upsert_fact(
+        self,
+        *,
+        key: str,
+        value: str,
+        sensitivity: str = "medium",
+        allowed_by_default: bool = False,
+        allowed_scenarios: list[str] | None = None,
+    ) -> dict:
+        resp = await self._http.post(
+            f"{self._base}/facts",
+            json={
+                "key": key,
+                "value": value,
+                "sensitivity": sensitivity,
+                "allowed_by_default": allowed_by_default,
+                "allowed_scenarios": allowed_scenarios or [],
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def delete_fact(self, key: str) -> None:
+        resp = await self._http.delete(f"{self._base}/facts/{key}")
+        resp.raise_for_status()
+
     async def aclose(self) -> None:
         await self._http.aclose()

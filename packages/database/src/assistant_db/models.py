@@ -125,6 +125,9 @@ class ProfileFact(TimestampMixin, Base):
     value: Mapped[str] = mapped_column(Text)
     sensitivity: Mapped[str] = mapped_column(String(10), default="medium")
     allowed_by_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Policy scenarios this fact may be used in without per-task whitelisting
+    # (EPIC-003 B2), e.g. ["doctor", "insurance"].
+    allowed_scenarios: Mapped[list] = mapped_column(JsonCol, default=list)
 
 
 class AuditLog(Base):

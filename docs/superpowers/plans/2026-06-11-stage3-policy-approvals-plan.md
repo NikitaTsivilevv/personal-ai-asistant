@@ -14,7 +14,7 @@
 ## Phase B - Approvals hardening
 
 - [x] B1. Approval expiry + in-call wait phrases + graceful wrap-up on expiry/reject. *(Default 120s; `approval_expired` event marks the row expired and resumes the run; agent gets a wrap-up phrase + instruction to end_call politely.)*
-- [ ] B2. profile_facts `allowed_scenarios` + `disclose_fact` checks; Telegram command to manage facts. *(Engine-side fact allowlist check is in (code-fact-not-allowed); DB/bot wiring pending.)*
+- [x] B2. profile_facts `allowed_scenarios` + `disclose_fact` checks; Telegram command to manage facts. *(Column + migration; /facts CRUD API (audited, values excluded from audit payloads); worker loads facts into prompt and policy ctx, scenario-aware; bot commands /facts, /fact_add, /fact_del.)*
 
 ## Phase C - In-call human control
 

@@ -12,7 +12,7 @@ from assistant_db.models import Base
 from assistant_db.session import create_engine, create_session_factory
 from assistant_shared.queue import create_redis
 
-from .routers import approvals, runs, tasks, webhooks
+from .routers import approvals, facts, runs, tasks, webhooks
 from .settings import Settings
 from .sweeper import sweeper_loop
 
@@ -66,6 +66,7 @@ def create_app(
             allow_headers=["*"],
         )
     app.include_router(tasks.router)
+    app.include_router(facts.router)
     app.include_router(approvals.router)
     app.include_router(runs.router)
     app.include_router(webhooks.router)
