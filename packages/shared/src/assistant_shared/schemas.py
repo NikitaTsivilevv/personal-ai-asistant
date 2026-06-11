@@ -1,0 +1,128 @@
+"""Shared domain schemas used by api, bot, and voice-worker."""
+
+from __future__ import annotations
+
+import enum
+from datetime import datetime
+
+from pydantic import BaseModel, Field
+
+
+class TaskStatus(str, enum.Enum):
+    draft = "draft"
+    ready = "ready"
+    queued = "queued"
+    running = "running"
+    waiting_approval = "waiting_approval"
+    done = "done"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
+class RunStatus(str, enum.Enum):
+    queued = "queued"
+    running = "running"
+    waiting_approval = "waiting_approval"
+    completed = "completed"
+    failed = "failed"
+    aborted = "aborted"
+
+
+class ApprovalKind(str, enum.Enum):
+    disclosure = "disclosure"
+    payment = "payment"
+    cancellation = "cancellation"
+    sensitive_data = "sensitive_data"
+    other = "other"
+
+
+class ApprovalStatus(str, enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+    expired = "expired"
+
+
+class Actor(str, enum.Enum):
+    user = "user"
+    assistant = "assistant"
+    policy = "policy"
+    system = "system"
+
+
+class Speaker(str, enum.Enum):
+    assistant = "assistant"
+    callee = "callee"
+    system = "system"
+
+
+class StructuredGoal(BaseModel):
+    """LLM-normalized task goal (TZ section 3)."""
+
+    objective: str
+    constraints: list[str] = Field(default_factory=list)
+    allowed_facts: list[str] = Field(default_factory=list)
+    autonomy_level: int = Field(default=1, ge=0, le=3)
+
+
+class TaskCreate(BaseModel):
+    title: str
+    instructions: str
+    structured_goal: StructuredGoal
+    target_phone: str | None = None
+    target_name: str | None = None
+    language_pref: str | None = None
+
+
+class ApprovalOut(BaseModel):
+    id: str
+    task_run_id: str
+    kind: ApprovalKind
+    question: str
+    context: dict = Field(default_factory=dict)
+    status: ApprovalStatus
+    requested_at: datetime
+    resolved_at: datetime | None = None
+    resolved_via: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class TaskRunOut(BaseModel):
+    id: str
+    task_id: str
+    attempt_no: int
+    status: RunStatus
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    result_summary: str | None = None
+    failure_reason: str | None = None
+    estimated_cost_cents: int | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class TaskOut(BaseModel):
+    id: str
+    user_id: str
+    title: str
+    instructions: str
+    structured_goal: StructuredGoal
+    target_phone: str | None
+    target_name: str | None
+    status: TaskStatus
+    language_pref: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TaskDetailOut(TaskOut):
+    runs: list[TaskRunOut] = Field(default_factory=list)
+    approvals: list[ApprovalOut] = Field(default_factory=list)
+
+
+class ApprovalResolve(BaseModel):
+    decision: ApprovalStatus  # approved | rejected
+    resolved_via: str = "telegram"

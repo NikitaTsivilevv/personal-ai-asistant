@@ -1,0 +1,25 @@
+[project]
+name = "assistant-voice-worker"
+version = "0.1.0"
+description = "Voice worker: stage 1 stub that simulates call runs (real Pipecat worker in EPIC-002)"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.27",
+    "pydantic-settings>=2.6",
+    "assistant-shared",
+    "assistant-policy",
+]
+
+[tool.uv.sources]
+assistant-shared = { workspace = true }
+assistant-policy = { workspace = true }
+
+[project.scripts]
+assistant-worker = "assistant_worker.main:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/assistant_worker"]
