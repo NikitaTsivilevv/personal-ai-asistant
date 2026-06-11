@@ -85,7 +85,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="claude-haiku-4-5")
     parser.add_argument("--language", default="es")
-    parser.add_argument("--name", default="Nikita")
+    parser.add_argument("--name", default="María García")
     args = parser.parse_args()
     if "LLM_API_KEY" not in os.environ:
         print("set LLM_API_KEY (and LLM_BASE_URL) to run real models; skipping.")
