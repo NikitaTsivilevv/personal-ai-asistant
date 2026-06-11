@@ -14,8 +14,14 @@ from dataclasses import dataclass, field
 
 import redis.asyncio as aioredis
 
-from assistant_policy import PolicyAction, TaskContext, evaluate
-from assistant_policy.engine import DecisionType
+from assistant_policy import (
+    ActionRequest,
+    FactSensitivity,
+    PolicyActionType,
+    PolicyOutcome,
+    TaskContext,
+    evaluate,
+)
 from assistant_shared.queue import ControlMessage, wait_control
 
 from ..events_client import RunClient
@@ -24,15 +30,17 @@ from .control import ControlRouter
 
 logger = logging.getLogger(__name__)
 
-# Maps the LLM-facing action argument of request_approval to policy actions.
-_ACTION_MAP: dict[str, PolicyAction] = {
-    "share_personal_data": PolicyAction.share_medium_sensitivity_fact,
-    "share_sensitive_data": PolicyAction.share_high_sensitivity_fact,
-    "book_appointment": PolicyAction.book_appointment,
-    "reschedule_appointment": PolicyAction.reschedule_appointment,
-    "cancel_service": PolicyAction.cancel_service,
-    "make_payment": PolicyAction.make_payment,
-    "change_contract": PolicyAction.change_contract,
+# Maps the LLM-facing action argument of request_approval to the policy
+# taxonomy (EPIC-003 spec §2). The LLM proposes; the engine disposes.
+_ACTION_MAP: dict[str, tuple[PolicyActionType, FactSensitivity | None]] = {
+    "share_personal_data": (PolicyActionType.disclose_fact, FactSensitivity.medium),
+    "share_sensitive_data": (PolicyActionType.disclose_fact, FactSensitivity.high),
+    "share_contact": (PolicyActionType.share_contact, None),
+    "book_appointment": (PolicyActionType.commit_booking, None),
+    "reschedule_appointment": (PolicyActionType.commit_change, None),
+    "cancel_service": (PolicyActionType.commit_cancellation, None),
+    "make_payment": (PolicyActionType.agree_payment, None),
+    "change_contract": (PolicyActionType.accept_terms, None),
 }
 
 TOOL_DEFINITIONS: list[dict] = [
@@ -101,7 +109,7 @@ class CallToolbox:
     run_client: RunClient
     redis: aioredis.Redis
     run_id: str
-    approval_timeout_s: int = 600
+    approval_timeout_s: int = 120
     # Async callbacks provided by the pipeline.
     speak: Callable[[str], Awaitable[None]] | None = None  # say filler text via TTS
     hangup: Callable[[], Awaitable[None]] | None = None  # terminate the call leg
@@ -117,19 +125,43 @@ class CallToolbox:
     def _policy_ctx(self) -> TaskContext:
         return TaskContext(
             autonomy_level=self.config.goal.autonomy_level,
+            scenario=self.config.goal.scenario,
             allowed_facts=self.config.goal.allowed_facts,
         )
 
     async def request_approval(self, action: str, detail: str) -> dict:
-        policy_action = _ACTION_MAP.get(action)
-        if policy_action is None:
+        mapped = _ACTION_MAP.get(action)
+        if mapped is None:
             return {"status": "error", "message": f"unknown action {action!r}"}
+        policy_action, sensitivity = mapped
 
-        decision = evaluate(policy_action, self._policy_ctx(), detail=detail)
-        if decision.type == DecisionType.allow:
+        ctx = self._policy_ctx()
+        request = ActionRequest(
+            action=policy_action, detail=detail, fact_sensitivity=sensitivity
+        )
+        decision = evaluate(request, ctx)
+        await self.run_client.policy_decision(
+            {
+                "rule_id": decision.rule_id,
+                "inputs_hash": decision.inputs_hash,
+                "outcome": decision.type.value,
+                "action": policy_action.value,
+                "detail": detail,
+                "scenario": ctx.scenario,
+                "autonomy_level": ctx.autonomy_level,
+            }
+        )
+
+        if decision.type == PolicyOutcome.allow:
             return {"status": "approved", "note": "allowed by policy, no confirmation needed"}
-        if decision.type == DecisionType.deny:
-            return {"status": "denied", "reason": decision.reason}
+        if decision.type == PolicyOutcome.deny:
+            from .agent import deny_phrase
+
+            return {
+                "status": "denied",
+                "reason": decision.reason,
+                "say": deny_phrase(self.config.language),
+            }
 
         # Pause gracefully while the client decides (spec acceptance criterion 3).
         if self.speak is not None:
@@ -137,14 +169,27 @@ class CallToolbox:
 
             await self.speak(approval_filler(self.config.language))
 
-        await self.run_client.request_approval(
+        approval_id = await self.run_client.request_approval(
             kind=decision.approval_kind.value,
             question=decision.question,
-            context={"action": action, "detail": detail},
+            context={"action": action, "detail": detail, "rule_id": decision.rule_id},
         )
         control = await self._wait_for_approval()
         if control is None:
-            return {"status": "timeout", "message": "client did not answer in time"}
+            # Expired (EPIC-003 B1): resume the call with a graceful wrap-up,
+            # never hang silently (acceptance criterion 3).
+            from .agent import expiry_wrapup
+
+            await self.run_client.approval_expired(approval_id)
+            return {
+                "status": "expired",
+                "say": expiry_wrapup(self.config.language),
+                "instruction": (
+                    "The client did not answer in time. Say the wrap-up phrase, "
+                    "do NOT perform the action, then politely end the call via "
+                    "end_call with outcome partially_achieved."
+                ),
+            }
         if control.type in ("cancel", "hangup"):
             return {"status": "cancelled", "message": "client ended the task"}
         if control.status == "approved":

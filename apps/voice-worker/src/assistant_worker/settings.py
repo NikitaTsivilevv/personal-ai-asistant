@@ -10,8 +10,9 @@ class WorkerSettings(BaseSettings):
     api_base_url: str = "http://127.0.0.1:8000"
     internal_api_token: str = "dev-internal-token"
 
-    # How long one simulated run waits for an approval before giving up (seconds).
-    approval_timeout_s: int = 600
+    # How long a run waits for an in-call approval before it expires and the
+    # agent wraps up gracefully (EPIC-003 spec: default 2 min).
+    approval_timeout_s: int = 120
     # Artificial pacing between simulated events (seconds); 0 in tests.
     step_delay_s: float = 1.0
 

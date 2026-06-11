@@ -1,110 +1,193 @@
-"""Policy engine stub (stage 1).
+"""Policy engine v1 (EPIC-003 spec §3).
 
-One entry point used by the voice worker before any sensitive action:
+The LLM proposes actions; this engine disposes. Rules are data
+(``rules/*.json``, one file per scenario profile); the engine is the loader
+plus a small deterministic evaluator:
 
-    evaluate(action, task_context) -> allow | require_approval(kind, question) | deny(reason)
+    evaluate(request, ctx) -> Decision(allow | require_approval | deny)
 
-Stage 1 ships a rule table keyed by autonomy level (TZ §4). Real rules grow in
-EPIC-003. Safety baseline from AGENTS.md: financial, legal, medical, or
-contract-changing actions require explicit approval regardless of autonomy
-level until a future decision narrows that rule.
+Every decision carries the matched rule id and a hash of the inputs so the
+caller can write an auditable trail (acceptance criterion 5).
+
+Hard floor (D-7 / AGENTS.md safety rule), enforced in code so no rule file
+can lower it: financial/legal/medical actions and high-sensitivity
+disclosures never resolve to ``allow``.
 """
 
 from __future__ import annotations
 
-import enum
+import hashlib
+import json
 from dataclasses import dataclass, field
+from functools import lru_cache
+from importlib import resources
 
+from assistant_shared.policy import (
+    ActionRequest,
+    FactSensitivity,
+    PolicyActionType,
+    PolicyOutcome,
+    PolicyRule,
+    Scenario,
+    ScenarioRules,
+)
 from assistant_shared.schemas import ApprovalKind
 
+# Actions that may never resolve to `allow`, regardless of rules (spec §2:
+# "hard floor, not configurable down").
+HARD_FLOOR_ACTIONS: frozenset[PolicyActionType] = frozenset(
+    {
+        PolicyActionType.agree_payment,
+        PolicyActionType.accept_terms,
+        PolicyActionType.say_sensitive,
+    }
+)
 
-class PolicyAction(str, enum.Enum):
-    share_low_sensitivity_fact = "share_low_sensitivity_fact"
-    share_medium_sensitivity_fact = "share_medium_sensitivity_fact"
-    share_high_sensitivity_fact = "share_high_sensitivity_fact"
-    book_appointment = "book_appointment"
-    reschedule_appointment = "reschedule_appointment"
-    cancel_service = "cancel_service"
-    make_payment = "make_payment"
-    change_contract = "change_contract"
+_FLOOR_APPROVAL_KIND: dict[PolicyActionType, ApprovalKind] = {
+    PolicyActionType.agree_payment: ApprovalKind.payment,
+    PolicyActionType.accept_terms: ApprovalKind.other,
+    PolicyActionType.say_sensitive: ApprovalKind.sensitive_data,
+}
 
-
-class DecisionType(str, enum.Enum):
-    allow = "allow"
-    require_approval = "require_approval"
-    deny = "deny"
+_FLOOR_QUESTION = "Требуется подтверждение: {detail}?"
 
 
 @dataclass
 class TaskContext:
     autonomy_level: int = 1  # 0-3, TZ §4
+    scenario: str = Scenario.generic.value
     allowed_facts: list[str] = field(default_factory=list)
     extra: dict = field(default_factory=dict)
 
 
 @dataclass
 class Decision:
-    type: DecisionType
+    type: PolicyOutcome
+    rule_id: str
+    inputs_hash: str
     approval_kind: ApprovalKind | None = None
     question: str | None = None
     reason: str | None = None
 
-    @classmethod
-    def allow(cls) -> Decision:
-        return cls(type=DecisionType.allow)
 
-    @classmethod
-    def require_approval(cls, kind: ApprovalKind, question: str) -> Decision:
-        return cls(type=DecisionType.require_approval, approval_kind=kind, question=question)
-
-    @classmethod
-    def deny(cls, reason: str) -> Decision:
-        return cls(type=DecisionType.deny, reason=reason)
-
-
-# Minimum autonomy level at which the action runs without approval.
-# None = never autonomous in stage 1 (always requires approval).
-_MIN_AUTONOMY: dict[PolicyAction, int | None] = {
-    PolicyAction.share_low_sensitivity_fact: 1,
-    PolicyAction.share_medium_sensitivity_fact: 2,
-    PolicyAction.share_high_sensitivity_fact: None,
-    PolicyAction.book_appointment: 2,
-    PolicyAction.reschedule_appointment: 2,
-    PolicyAction.cancel_service: 3,
-    PolicyAction.make_payment: None,  # AGENTS.md safety rule
-    PolicyAction.change_contract: None,  # AGENTS.md safety rule
-}
-
-_APPROVAL_KIND: dict[PolicyAction, ApprovalKind] = {
-    PolicyAction.share_low_sensitivity_fact: ApprovalKind.sensitive_data,
-    PolicyAction.share_medium_sensitivity_fact: ApprovalKind.sensitive_data,
-    PolicyAction.share_high_sensitivity_fact: ApprovalKind.sensitive_data,
-    PolicyAction.book_appointment: ApprovalKind.other,
-    PolicyAction.reschedule_appointment: ApprovalKind.other,
-    PolicyAction.cancel_service: ApprovalKind.cancellation,
-    PolicyAction.make_payment: ApprovalKind.payment,
-    PolicyAction.change_contract: ApprovalKind.other,
-}
-
-_QUESTIONS: dict[PolicyAction, str] = {
-    PolicyAction.share_low_sensitivity_fact: "Разрешить передать собеседнику данные: {detail}?",
-    PolicyAction.share_medium_sensitivity_fact: "Разрешить передать собеседнику данные: {detail}?",
-    PolicyAction.share_high_sensitivity_fact: "Разрешить передать чувствительные данные: {detail}?",
-    PolicyAction.book_appointment: "Подтвердить запись: {detail}?",
-    PolicyAction.reschedule_appointment: "Подтвердить перенос: {detail}?",
-    PolicyAction.cancel_service: "Подтвердить отмену: {detail}?",
-    PolicyAction.make_payment: "Подтвердить оплату: {detail}?",
-    PolicyAction.change_contract: "Подтвердить изменение условий: {detail}?",
-}
+@lru_cache(maxsize=1)
+def load_rule_files() -> dict[str, ScenarioRules]:
+    """Load and validate every rule file shipped with the package."""
+    loaded: dict[str, ScenarioRules] = {}
+    rules_dir = resources.files("assistant_policy").joinpath("rules")
+    for entry in rules_dir.iterdir():
+        if not entry.name.endswith(".json"):
+            continue
+        profile = ScenarioRules.model_validate(json.loads(entry.read_text(encoding="utf-8")))
+        loaded[profile.scenario.value] = profile
+    if Scenario.generic.value not in loaded:
+        raise RuntimeError("policy rules misconfigured: generic.json missing")
+    return loaded
 
 
-def evaluate(action: PolicyAction, ctx: TaskContext, detail: str = "") -> Decision:
+def scenario_profile(scenario: str) -> ScenarioRules:
+    profiles = load_rule_files()
+    return profiles.get(scenario, profiles[Scenario.generic.value])
+
+
+def default_allowed_facts(scenario: str) -> list[str]:
+    return list(scenario_profile(scenario).default_allowed_facts)
+
+
+def _inputs_hash(request: ActionRequest, ctx: TaskContext) -> str:
+    canonical = json.dumps(
+        {
+            "action": request.action.value,
+            "detail": request.detail,
+            "fact_key": request.fact_key,
+            "fact_sensitivity": (
+                request.fact_sensitivity.value if request.fact_sensitivity else None
+            ),
+            "scenario": ctx.scenario,
+            "autonomy_level": ctx.autonomy_level,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+
+def _match(rules: list[PolicyRule], request: ActionRequest, ctx: TaskContext) -> PolicyRule | None:
+    for rule in rules:
+        if rule.matches(request.action, ctx.autonomy_level, request.fact_sensitivity):
+            return rule
+    return None
+
+
+def evaluate(request: ActionRequest, ctx: TaskContext) -> Decision:
+    """Deterministic outcome for every (scenario, action, autonomy, sensitivity)."""
+    inputs_hash = _inputs_hash(request, ctx)
+
     if not 0 <= ctx.autonomy_level <= 3:
-        return Decision.deny(f"invalid autonomy_level {ctx.autonomy_level}")
+        return Decision(
+            type=PolicyOutcome.deny,
+            rule_id="code-invalid-autonomy",
+            inputs_hash=inputs_hash,
+            reason=f"invalid autonomy_level {ctx.autonomy_level}",
+        )
 
-    min_level = _MIN_AUTONOMY[action]
-    question = _QUESTIONS[action].format(detail=detail or "(без деталей)")
+    # Fact access control (spec §2): a fact must be allowed by the task or by
+    # the scenario profile before disclose_fact is even considered.
+    if request.action == PolicyActionType.disclose_fact and request.fact_key:
+        allowed = set(ctx.allowed_facts) | set(default_allowed_facts(ctx.scenario))
+        if request.fact_key not in allowed:
+            return Decision(
+                type=PolicyOutcome.deny,
+                rule_id="code-fact-not-allowed",
+                inputs_hash=inputs_hash,
+                reason=f"fact {request.fact_key!r} is not allowed for this task",
+            )
 
-    if min_level is None or ctx.autonomy_level < min_level:
-        return Decision.require_approval(_APPROVAL_KIND[action], question)
-    return Decision.allow()
+    profile = scenario_profile(ctx.scenario)
+    generic = scenario_profile(Scenario.generic.value)
+    rule = _match(profile.rules, request, ctx)
+    if rule is None and profile is not generic:
+        rule = _match(generic.rules, request, ctx)
+
+    if rule is None:
+        # Unmatched actions escalate rather than slip through.
+        decision = Decision(
+            type=PolicyOutcome.require_approval,
+            rule_id="code-default-escalate",
+            inputs_hash=inputs_hash,
+            approval_kind=ApprovalKind.other,
+            question=_FLOOR_QUESTION.format(detail=request.detail or request.action.value),
+        )
+    else:
+        question = None
+        if rule.question_template:
+            question = rule.question_template.format(detail=request.detail or "(без деталей)")
+        decision = Decision(
+            type=rule.outcome,
+            rule_id=rule.id,
+            inputs_hash=inputs_hash,
+            approval_kind=rule.approval_kind,
+            question=question,
+            reason=rule.deny_reason,
+        )
+
+    return _apply_hard_floor(decision, request)
+
+
+def _apply_hard_floor(decision: Decision, request: ActionRequest) -> Decision:
+    if decision.type != PolicyOutcome.allow:
+        return decision
+    floored = request.action in HARD_FLOOR_ACTIONS or (
+        request.action == PolicyActionType.disclose_fact
+        and request.fact_sensitivity == FactSensitivity.high
+    )
+    if not floored:
+        return decision
+    kind = _FLOOR_APPROVAL_KIND.get(request.action, ApprovalKind.sensitive_data)
+    return Decision(
+        type=PolicyOutcome.require_approval,
+        rule_id=f"code-hard-floor({decision.rule_id})",
+        inputs_hash=decision.inputs_hash,
+        approval_kind=kind,
+        question=_FLOOR_QUESTION.format(detail=request.detail or request.action.value),
+    )

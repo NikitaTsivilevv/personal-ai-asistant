@@ -18,6 +18,7 @@ from assistant_worker.simulator import simulate_run
 @pytest.fixture
 def worker_settings() -> WorkerSettings:
     return WorkerSettings(
+        _env_file=None,  # tests must not depend on the developer's .env
         api_base_url="http://test",
         internal_api_token="test-internal-token",
         approval_timeout_s=10,
@@ -53,8 +54,13 @@ async def _run_e2e(client, fake_redis, worker_settings, task_payload, decision: 
         simulate_run(msg, http=client, redis=fake_redis, settings=worker_settings)
     )
     async def pending_or_worker_crash():
-        if worker.done() and worker.exception() is not None:
-            raise worker.exception()
+        if worker.done():
+            if worker.exception() is not None:
+                raise worker.exception()
+            # Worker finished without ever pausing on an approval: fail fast
+            # with the final state instead of polling until the timeout.
+            detail = (await client.get(f"/tasks/{task['id']}")).json()
+            raise AssertionError(f"worker finished without approval pause: {detail}")
         return await _pending_approval(client, task["id"])
 
     approval = await _wait_for(pending_or_worker_crash)

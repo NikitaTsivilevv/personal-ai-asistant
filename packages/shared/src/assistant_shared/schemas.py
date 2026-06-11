@@ -63,6 +63,8 @@ class StructuredGoal(BaseModel):
     constraints: list[str] = Field(default_factory=list)
     allowed_facts: list[str] = Field(default_factory=list)
     autonomy_level: int = Field(default=1, ge=0, le=3)
+    # Policy scenario profile (EPIC-003); "generic" rules apply when unset.
+    scenario: str = "generic"
 
 
 class TaskCreate(BaseModel):

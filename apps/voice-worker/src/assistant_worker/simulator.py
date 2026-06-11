@@ -14,8 +14,15 @@ import logging
 import httpx
 import redis.asyncio as aioredis
 
-from assistant_policy import Decision, PolicyAction, TaskContext, evaluate
-from assistant_policy.engine import DecisionType
+from assistant_policy import (
+    ActionRequest,
+    Decision,
+    FactSensitivity,
+    PolicyActionType,
+    PolicyOutcome,
+    TaskContext,
+    evaluate,
+)
 from assistant_shared.events import RunEvent, RunEventType
 from assistant_shared.queue import QueuedRun, wait_control
 from assistant_shared.schemas import RunStatus, Speaker
@@ -44,6 +51,7 @@ async def simulate_run(
     goal = task.get("structured_goal") or {}
     ctx = TaskContext(
         autonomy_level=int(goal.get("autonomy_level", 1)),
+        scenario=goal.get("scenario", "generic"),
         allowed_facts=list(goal.get("allowed_facts", [])),
     )
     delay = settings.step_delay_s
@@ -57,15 +65,31 @@ async def simulate_run(
 
     # The simulated sensitive moment: callee asks for personal data.
     decision: Decision = evaluate(
-        PolicyAction.share_medium_sensitivity_fact, ctx, detail="дата рождения"
+        ActionRequest(
+            action=PolicyActionType.disclose_fact,
+            detail="дата рождения",
+            fact_sensitivity=FactSensitivity.medium,
+        ),
+        ctx,
     )
-    if decision.type == DecisionType.deny:
+    await client.policy_decision(
+        {
+            "rule_id": decision.rule_id,
+            "inputs_hash": decision.inputs_hash,
+            "outcome": decision.type.value,
+            "action": PolicyActionType.disclose_fact.value,
+            "detail": "дата рождения",
+            "scenario": ctx.scenario,
+            "autonomy_level": ctx.autonomy_level,
+        }
+    )
+    if decision.type == PolicyOutcome.deny:
         await client.send(
             RunEvent(type=RunEventType.run_failed, data={"failure_reason": decision.reason or "policy deny"})
         )
         return
 
-    if decision.type == DecisionType.require_approval:
+    if decision.type == PolicyOutcome.require_approval:
         result = await client.send(
             RunEvent(
                 type=RunEventType.approval_requested,

@@ -1,0 +1,20 @@
+{
+  "scenario": "doctor",
+  "default_allowed_facts": ["имя", "телефон", "дата рождения"],
+  "rules": [
+    {
+      "id": "doc-disclose-medical",
+      "action": "disclose_fact",
+      "fact_sensitivity": ["medium", "high"],
+      "outcome": "require_approval",
+      "approval_kind": "sensitive_data",
+      "question_template": "Клиника спрашивает медицинские данные: {detail}. Разрешить передать?"
+    },
+    {
+      "id": "doc-booking",
+      "action": "commit_booking",
+      "autonomy": [1, 2, 3],
+      "outcome": "allow"
+    }
+  ]
+}

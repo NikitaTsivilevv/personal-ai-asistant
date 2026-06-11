@@ -1,0 +1,27 @@
+{
+  "scenario": "info_gathering",
+  "default_allowed_facts": ["имя"],
+  "rules": [
+    {
+      "id": "info-booking-escalate",
+      "action": "commit_booking",
+      "outcome": "require_approval",
+      "approval_kind": "other",
+      "question_template": "Задача была только узнать информацию, но есть возможность записи: {detail}. Подтвердить?"
+    },
+    {
+      "id": "info-change-escalate",
+      "action": "commit_change",
+      "outcome": "require_approval",
+      "approval_kind": "other",
+      "question_template": "Подтвердить изменение: {detail}?"
+    },
+    {
+      "id": "info-cancel-escalate",
+      "action": "commit_cancellation",
+      "outcome": "require_approval",
+      "approval_kind": "cancellation",
+      "question_template": "Подтвердить отмену: {detail}?"
+    }
+  ]
+}

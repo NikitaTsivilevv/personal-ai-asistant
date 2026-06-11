@@ -1,0 +1,133 @@
+{
+  "scenario": "generic",
+  "default_allowed_facts": [],
+  "rules": [
+    {
+      "id": "gen-disclose-low",
+      "action": "disclose_fact",
+      "fact_sensitivity": ["low"],
+      "autonomy": [1, 2, 3],
+      "outcome": "allow"
+    },
+    {
+      "id": "gen-disclose-low-l0",
+      "action": "disclose_fact",
+      "fact_sensitivity": ["low"],
+      "autonomy": [0],
+      "outcome": "require_approval",
+      "approval_kind": "sensitive_data",
+      "question_template": "Разрешить передать собеседнику данные: {detail}?"
+    },
+    {
+      "id": "gen-disclose-medium",
+      "action": "disclose_fact",
+      "fact_sensitivity": ["medium"],
+      "autonomy": [2, 3],
+      "outcome": "allow"
+    },
+    {
+      "id": "gen-disclose-medium-low-autonomy",
+      "action": "disclose_fact",
+      "fact_sensitivity": ["medium"],
+      "autonomy": [0, 1],
+      "outcome": "require_approval",
+      "approval_kind": "sensitive_data",
+      "question_template": "Разрешить передать собеседнику данные: {detail}?"
+    },
+    {
+      "id": "gen-disclose-high",
+      "action": "disclose_fact",
+      "fact_sensitivity": ["high"],
+      "outcome": "require_approval",
+      "approval_kind": "sensitive_data",
+      "question_template": "Разрешить передать чувствительные данные: {detail}?"
+    },
+    {
+      "id": "gen-booking",
+      "action": "commit_booking",
+      "autonomy": [1, 2, 3],
+      "outcome": "allow"
+    },
+    {
+      "id": "gen-booking-l0",
+      "action": "commit_booking",
+      "autonomy": [0],
+      "outcome": "require_approval",
+      "approval_kind": "other",
+      "question_template": "Задача была только узнать информацию. Подтвердить запись: {detail}?"
+    },
+    {
+      "id": "gen-change",
+      "action": "commit_change",
+      "autonomy": [0, 1, 2],
+      "outcome": "require_approval",
+      "approval_kind": "other",
+      "question_template": "Подтвердить изменение: {detail}?"
+    },
+    {
+      "id": "gen-change-l3",
+      "action": "commit_change",
+      "autonomy": [3],
+      "outcome": "allow"
+    },
+    {
+      "id": "gen-cancel",
+      "action": "commit_cancellation",
+      "autonomy": [0, 1, 2],
+      "outcome": "require_approval",
+      "approval_kind": "cancellation",
+      "question_template": "Подтвердить отмену: {detail}?"
+    },
+    {
+      "id": "gen-cancel-l3",
+      "action": "commit_cancellation",
+      "autonomy": [3],
+      "outcome": "allow"
+    },
+    {
+      "id": "gen-payment",
+      "action": "agree_payment",
+      "outcome": "require_approval",
+      "approval_kind": "payment",
+      "question_template": "Подтвердить оплату: {detail}?"
+    },
+    {
+      "id": "gen-share-contact",
+      "action": "share_contact",
+      "autonomy": [2, 3],
+      "outcome": "allow"
+    },
+    {
+      "id": "gen-share-contact-low-autonomy",
+      "action": "share_contact",
+      "autonomy": [0, 1],
+      "outcome": "require_approval",
+      "approval_kind": "sensitive_data",
+      "question_template": "Разрешить передать контактные данные: {detail}?"
+    },
+    {
+      "id": "gen-accept-terms",
+      "action": "accept_terms",
+      "outcome": "require_approval",
+      "approval_kind": "other",
+      "question_template": "Подтвердить согласие с условиями: {detail}?"
+    },
+    {
+      "id": "gen-end-call",
+      "action": "end_call",
+      "outcome": "allow"
+    },
+    {
+      "id": "gen-transfer",
+      "action": "transfer",
+      "outcome": "allow"
+    },
+    {
+      "id": "gen-say-sensitive",
+      "action": "say_sensitive",
+      "outcome": "require_approval",
+      "approval_kind": "sensitive_data",
+      "question_template": "Разрешить сказать собеседнику: {detail}?"
+    }
+  ]
+}
