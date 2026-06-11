@@ -227,6 +227,48 @@ async def whisper_run(
     return {"ok": True}
 
 
+@router.post("/runs/{run_id}/pause")
+async def pause_run(
+    run_id: str,
+    session: AsyncSession = Depends(get_session),
+    redis: aioredis.Redis = Depends(get_redis),
+) -> dict:
+    """Live-call control (EPIC-003 C1): freeze the agent; the call keeps
+    transcribing but the assistant stops responding until resume."""
+    run, task = await _get_active_run(session, run_id)
+    write_audit(
+        session,
+        user_id=task.user_id,
+        actor=Actor.user,
+        event_type="run.pause_requested",
+        payload={},
+        task_run_id=run.id,
+    )
+    await session.commit()
+    await send_control(redis, run.id, ControlMessage(type="pause"))
+    return {"ok": True}
+
+
+@router.post("/runs/{run_id}/resume")
+async def resume_run(
+    run_id: str,
+    session: AsyncSession = Depends(get_session),
+    redis: aioredis.Redis = Depends(get_redis),
+) -> dict:
+    run, task = await _get_active_run(session, run_id)
+    write_audit(
+        session,
+        user_id=task.user_id,
+        actor=Actor.user,
+        event_type="run.resume_requested",
+        payload={},
+        task_run_id=run.id,
+    )
+    await session.commit()
+    await send_control(redis, run.id, ControlMessage(type="resume"))
+    return {"ok": True}
+
+
 @router.get("/runs/{run_id}/events")
 async def stream_run_events(
     run_id: str,

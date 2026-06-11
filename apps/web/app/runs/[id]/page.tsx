@@ -29,6 +29,7 @@ export default function LiveCallPage() {
   const [summary, setSummary] = useState<string | null>(null);
   const [whisper, setWhisper] = useState("");
   const [busy, setBusy] = useState(false);
+  const [paused, setPaused] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,7 +47,10 @@ export default function LiveCallPage() {
         );
       } else if (event.type === "status_changed") {
         setRunStatus(String(event.data.status ?? "—"));
-        if (event.data.call_state) setCallState(String(event.data.call_state));
+        if (event.data.call_state) {
+          setCallState(String(event.data.call_state));
+          setPaused(event.data.call_state === "paused");
+        }
       } else if (event.type === "approval_requested") {
         setCallState("ожидает подтверждения в Telegram");
       } else if (event.type === "run_completed") {
@@ -102,6 +106,17 @@ export default function LiveCallPage() {
       setBusy(false);
     }
   }, [id, whisper, busy]);
+
+  const togglePause = useCallback(async () => {
+    if (!id || busy) return;
+    setBusy(true);
+    try {
+      await fetch(`${API_BASE}/runs/${id}/${paused ? "resume" : "pause"}`, { method: "POST" });
+      setPaused(!paused);
+    } finally {
+      setBusy(false);
+    }
+  }, [id, paused, busy]);
 
   const active = runStatus === "running" || runStatus === "waiting_approval";
 
@@ -164,6 +179,19 @@ export default function LiveCallPage() {
           style={{ padding: "0.5rem 1rem", borderRadius: 6 }}
         >
           Отправить
+        </button>
+        <button
+          onClick={togglePause}
+          disabled={!active || busy}
+          style={{
+            padding: "0.5rem 1rem",
+            borderRadius: 6,
+            background: paused ? "#9ece6a" : "#e0af68",
+            color: "#1a1b26",
+            fontWeight: 600,
+          }}
+        >
+          {paused ? "Продолжить" : "Пауза"}
         </button>
         <button
           onClick={hangUp}

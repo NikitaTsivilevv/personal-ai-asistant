@@ -34,14 +34,18 @@ try:  # heavy optional deps
     from pipecat.audio.vad.silero import SileroVADAnalyzer
     from pipecat.frames.frames import (
         EndFrame,
+        InterimTranscriptionFrame,
         LLMMessagesAppendFrame,
         MetricsFrame,
         TranscriptionFrame,
         TTSSpeakFrame,
         TTSTextFrame,
+        UserStartedSpeakingFrame,
+        UserStoppedSpeakingFrame,
     )
     from pipecat.metrics.metrics import TTFBMetricsData
     from pipecat.observers.base_observer import BaseObserver, FramePushed
+    from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
     from pipecat.pipeline.pipeline import Pipeline
     from pipecat.pipeline.runner import PipelineRunner
     from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -60,6 +64,41 @@ try:  # heavy optional deps
     PIPECAT_AVAILABLE = True
 except ImportError:  # pragma: no cover - exercised only without the extra
     PIPECAT_AVAILABLE = False
+
+
+if PIPECAT_AVAILABLE:
+
+    class PauseGate(FrameProcessor):
+        """Freezes the agent while "Pause automation" is active (EPIC-003 C1).
+
+        Sits between STT and the user context aggregator: while paused it
+        swallows the frames that would trigger an LLM turn, so the assistant
+        stays silent but the call (and the transcript observer, which watches
+        the STT output upstream of this gate) keeps running.
+        """
+
+        PAUSABLE_FRAMES = ()  # set after class body; see below
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.paused = False
+
+        async def process_frame(self, frame, direction) -> None:
+            await super().process_frame(frame, direction)
+            if (
+                self.paused
+                and direction == FrameDirection.DOWNSTREAM
+                and isinstance(frame, self.PAUSABLE_FRAMES)
+            ):
+                return
+            await self.push_frame(frame, direction)
+
+    PauseGate.PAUSABLE_FRAMES = (
+        TranscriptionFrame,
+        InterimTranscriptionFrame,
+        UserStartedSpeakingFrame,
+        UserStoppedSpeakingFrame,
+    )
 
 
 async def read_stream_start(websocket: WebSocket) -> dict:
@@ -145,10 +184,12 @@ async def run_call_pipeline(
     )
     user_aggregator, assistant_aggregator = LLMContextAggregatorPair(context)
 
+    pause_gate = PauseGate()
     pipeline = Pipeline(
         [
             transport.input(),
             stt,
+            pause_gate,
             user_aggregator,
             llm,
             tts,
@@ -187,7 +228,16 @@ async def run_call_pipeline(
         logger.info("run %s: %s requested from control plane", run_id, kind)
         await hangup_call()
 
-    router = ControlRouter(redis, run_id, on_whisper=on_whisper, on_hangup=on_hangup)
+    async def on_pause(paused: bool) -> None:
+        pause_gate.paused = paused
+        logger.info("run %s: automation %s", run_id, "paused" if paused else "resumed")
+        await run_client.status(
+            sm.run_status, call_state="paused" if paused else sm.state.value
+        )
+
+    router = ControlRouter(
+        redis, run_id, on_whisper=on_whisper, on_hangup=on_hangup, on_pause=on_pause
+    )
     toolbox.control_router = router
 
     # Tool registration: every handler is wrapped so state transitions happen

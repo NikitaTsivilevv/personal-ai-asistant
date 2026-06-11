@@ -50,6 +50,33 @@ async def test_twilio_webhook_unknown_run_404(client):
     assert resp.status_code == 404
 
 
+async def test_pause_resume_send_control_and_audit(
+    client, app, fake_redis, internal_headers, task_payload
+):
+    """EPIC-003 C1: pause/resume reach the worker's control list and audit_log."""
+    _, run_id = await _queued_run(client, task_payload)
+    await _running(client, internal_headers, run_id)
+
+    assert (await client.post(f"/runs/{run_id}/pause")).status_code == 200
+    assert (await client.post(f"/runs/{run_id}/resume")).status_code == 200
+    # Inactive run -> 409.
+    assert (await client.post("/runs/missing/pause")).status_code == 404
+
+    raw = await fake_redis.lrange(run_control_key(run_id), 0, -1)
+    types = sorted(ControlMessage.model_validate_json(r).type for r in raw)
+    assert types == ["pause", "resume"]
+
+    async with app.state.session_factory() as session:
+        rows = (
+            await session.execute(
+                select(AuditLog.event_type).where(
+                    AuditLog.event_type.in_(["run.pause_requested", "run.resume_requested"])
+                )
+            )
+        ).scalars().all()
+    assert sorted(rows) == ["run.pause_requested", "run.resume_requested"]
+
+
 async def test_hangup_sends_control_and_audits(
     client, app, fake_redis, internal_headers, task_payload
 ):
