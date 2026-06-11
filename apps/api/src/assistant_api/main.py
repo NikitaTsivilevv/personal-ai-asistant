@@ -12,8 +12,9 @@ from assistant_db.models import Base
 from assistant_db.session import create_engine, create_session_factory
 from assistant_shared.queue import create_redis
 
-from .routers import approvals, runs, tasks
+from .routers import approvals, runs, tasks, webhooks
 from .settings import Settings
+from .sweeper import sweeper_loop
 
 
 def create_app(
@@ -36,7 +37,21 @@ def create_app(
         if create_schema:
             async with app.state.engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
+        sweeper_task = None
+        if settings.stale_run_timeout_s > 0:
+            import asyncio
+
+            sweeper_task = asyncio.create_task(
+                sweeper_loop(
+                    app.state.session_factory,
+                    app.state.redis,
+                    stale_after_s=settings.stale_run_timeout_s,
+                    interval_s=settings.stale_run_sweep_interval_s,
+                )
+            )
         yield
+        if sweeper_task is not None:
+            sweeper_task.cancel()
         await app.state.redis.aclose()
         await app.state.engine.dispose()
 
@@ -44,6 +59,7 @@ def create_app(
     app.include_router(tasks.router)
     app.include_router(approvals.router)
     app.include_router(runs.router)
+    app.include_router(webhooks.router)
 
     @app.get("/health")
     async def health() -> dict:

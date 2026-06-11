@@ -11,9 +11,12 @@ from datetime import UTC, datetime
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
+
+from assistant_shared.queue import ControlMessage, send_control
 
 from assistant_db.models import Approval, Task, TaskRun, TranscriptSegment
 from assistant_shared.events import (
@@ -146,6 +149,65 @@ async def ingest_run_event(
         ),
     )
     return {"ok": True, **extra}
+
+
+class WhisperIn(BaseModel):
+    text: str
+
+
+async def _get_active_run(session: AsyncSession, run_id: str) -> tuple[TaskRun, Task]:
+    run = (
+        await session.execute(select(TaskRun).where(TaskRun.id == run_id))
+    ).scalar_one_or_none()
+    if run is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    if run.status not in (RunStatus.running.value, RunStatus.waiting_approval.value):
+        raise HTTPException(status_code=409, detail=f"run is {run.status}, not active")
+    task = (await session.execute(select(Task).where(Task.id == run.task_id))).scalar_one()
+    return run, task
+
+
+@router.post("/runs/{run_id}/hangup")
+async def hangup_run(
+    run_id: str,
+    session: AsyncSession = Depends(get_session),
+    redis: aioredis.Redis = Depends(get_redis),
+) -> dict:
+    """Live-call control (EPIC-002): ask the worker to end the call gracefully."""
+    run, task = await _get_active_run(session, run_id)
+    write_audit(
+        session,
+        user_id=task.user_id,
+        actor=Actor.user,
+        event_type="run.hangup_requested",
+        payload={},
+        task_run_id=run.id,
+    )
+    await session.commit()
+    await send_control(redis, run.id, ControlMessage(type="hangup"))
+    return {"ok": True}
+
+
+@router.post("/runs/{run_id}/whisper")
+async def whisper_run(
+    run_id: str,
+    payload: WhisperIn,
+    session: AsyncSession = Depends(get_session),
+    redis: aioredis.Redis = Depends(get_redis),
+) -> dict:
+    """Live-call control (EPIC-002): inject a client instruction into the agent."""
+    run, task = await _get_active_run(session, run_id)
+    write_audit(
+        session,
+        user_id=task.user_id,
+        actor=Actor.user,
+        event_type="run.whisper",
+        payload={"text": payload.text},
+        task_run_id=run.id,
+    )
+    await session.commit()
+    await send_control(redis, run.id, ControlMessage(type="whisper", text=payload.text))
+    return {"ok": True}
 
 
 @router.get("/runs/{run_id}/events")

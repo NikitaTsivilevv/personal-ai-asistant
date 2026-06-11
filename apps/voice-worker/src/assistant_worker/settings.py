@@ -14,3 +14,32 @@ class WorkerSettings(BaseSettings):
     approval_timeout_s: int = 600
     # Artificial pacing between simulated events (seconds); 0 in tests.
     step_delay_s: float = 1.0
+
+    # "simulate" = stage-1 stub lifecycle; "call" = real Twilio/Pipecat call.
+    worker_mode: str = "simulate"
+
+    # --- Telephony (EPIC-002) ---
+    twilio_account_sid: str = "PLACEHOLDER"
+    twilio_auth_token: str = "PLACEHOLDER"
+    twilio_from_number: str = "PLACEHOLDER"  # the assistant's own Spanish number
+    # Public wss:// URL Twilio connects the media stream to (Cloudflare Tunnel in dev).
+    public_ws_url: str = "wss://PLACEHOLDER_HOST/ws"
+    # Local server the worker runs to accept that stream.
+    ws_host: str = "0.0.0.0"
+    ws_port: int = 8765
+
+    # --- Voice pipeline providers ---
+    deepgram_api_key: str = "PLACEHOLDER"
+    cartesia_api_key: str = "PLACEHOLDER"
+    cartesia_voice_id: str = "PLACEHOLDER"  # pick an ES-capable voice during provisioning
+    # Swappable conversation LLM (D-5): any OpenAI-compatible endpoint.
+    llm_api_key: str = "PLACEHOLDER"
+    llm_model: str = "gpt-4o-mini"
+    llm_base_url: str = ""  # empty = api.openai.com
+
+    # Summary/normalization LLM.
+    anthropic_api_key: str = ""
+
+    # Retry policy for busy/no-answer.
+    retry_max_attempts: int = 3
+    retry_base_delay_s: float = 120.0

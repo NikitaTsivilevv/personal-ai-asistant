@@ -24,3 +24,11 @@ class Settings(BaseSettings):
     api_port: int = 8000
 
     echo_sql: bool = False
+
+    # Twilio webhook signature validation; skipped while PLACEHOLDER (dev).
+    twilio_auth_token: str = "PLACEHOLDER"
+
+    # Crash recovery (EPIC-002 spec, acceptance criterion 5): runs with no
+    # events for this long are marked failed. 0 = sweeper disabled (tests).
+    stale_run_timeout_s: int = 0
+    stale_run_sweep_interval_s: int = 60

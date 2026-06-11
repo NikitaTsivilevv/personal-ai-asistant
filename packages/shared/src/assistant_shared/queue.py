@@ -30,11 +30,19 @@ class QueuedRun(BaseModel):
 
 
 class ControlMessage(BaseModel):
-    """Message delivered to a waiting worker via the run control list."""
+    """Message delivered to the worker via the run control list.
 
-    type: str  # "approval_resolved" | "cancel"
+    Types:
+    - "approval_resolved": approval_id + status filled
+    - "cancel": abort the task (stage 1 semantics)
+    - "hangup": end the live call gracefully (wrap-up, then summary)
+    - "whisper": text injected into the agent context mid-call
+    """
+
+    type: str
     approval_id: str | None = None
     status: str | None = None
+    text: str | None = None
 
 
 def create_redis(url: str) -> aioredis.Redis:
