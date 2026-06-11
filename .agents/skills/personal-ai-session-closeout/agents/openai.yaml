@@ -1,0 +1,4 @@
+interface:
+  display_name: "Personal AI Closeout"
+  short_description: "Close personal AI sessions cleanly."
+  default_prompt: "Close the current Personal AI Assistant project session by updating decisions, context, epics, questions, risks, and writing a handover."
