@@ -23,9 +23,11 @@ def fake_redis() -> fakeaioredis.FakeRedis:
 @pytest.fixture
 def settings() -> Settings:
     return Settings(
+        _env_file=None,  # tests must not depend on the developer's .env
         database_url="sqlite+aiosqlite://",
         internal_api_token="test-internal-token",
         default_user_name="Test Owner",
+        twilio_auth_token="PLACEHOLDER",
     )
 
 

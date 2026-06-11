@@ -12,7 +12,7 @@ import logging
 
 import httpx
 
-from assistant_shared.queue import create_redis, dequeue_run
+from assistant_shared.queue import create_redis, dequeue_run, describe_redis_target
 
 from .settings import WorkerSettings
 from .simulator import simulate_run
@@ -31,7 +31,7 @@ async def run_worker(settings: WorkerSettings | None = None) -> None:
 async def _run_simulate_worker(settings: WorkerSettings) -> None:
     redis = create_redis(settings.redis_url)
     async with httpx.AsyncClient() as http:
-        logger.info("simulate worker started, polling %s", settings.redis_url)
+        logger.info("simulate worker started, polling %s", describe_redis_target(settings.redis_url))
         while True:
             msg = await dequeue_run(redis, timeout=5)
             if msg is None:
