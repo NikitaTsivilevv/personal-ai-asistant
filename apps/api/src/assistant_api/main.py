@@ -56,6 +56,15 @@ def create_app(
         await app.state.engine.dispose()
 
     app = FastAPI(title="Personal AI Assistant - Control Plane API", lifespan=lifespan)
+    if settings.cors_origins:
+        from fastapi.middleware.cors import CORSMiddleware
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
     app.include_router(tasks.router)
     app.include_router(approvals.router)
     app.include_router(runs.router)

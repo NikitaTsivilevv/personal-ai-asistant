@@ -25,6 +25,9 @@ class Settings(BaseSettings):
 
     echo_sql: bool = False
 
+    # Comma-separated origins for the web live-call page.
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+
     # Twilio webhook signature validation; skipped while PLACEHOLDER (dev).
     twilio_auth_token: str = "PLACEHOLDER"
 
