@@ -115,3 +115,12 @@ Entry format:
 - **Rationale:** Rules-as-data keeps the engine ~200 lines and the matrix fully testable; a code-level floor means no rule file edit can weaken the AGENTS.md safety rule; rule ids + hashes make the audit trail reproducible (EU positioning per D-7).
 - **Consequences:** New scenarios = new JSON file + tests, no engine changes. The LLM-facing tool argument enum is mapped to the taxonomy in the worker; adding actions touches both. JSON profiles ship inside the wheel - rule changes require redeploys until a DB-backed rule store is justified.
 
+
+## D-11 - Conversation LLM switched to Anthropic claude-haiku-4-5 via OpenAI-compat endpoint
+
+- **Date:** 2026-06-11
+- **Status:** Accepted (revisit after live-call quality tuning)
+- **Context:** Mid live-session the OpenAI key hit `insufficient_quota` (429), leaving the call agent mute after the scripted disclosure. The worker's conversation LLM is an OpenAI-compatible client with env-configurable `LLM_BASE_URL`/`LLM_MODEL` (D-5 "swappable LLM").
+- **Decision:** Point the conversation LLM at Anthropic's OpenAI-compatibility endpoint (`LLM_BASE_URL=https://api.anthropic.com/v1/`, `LLM_MODEL=claude-haiku-4-5`, Anthropic API key). No code changes; the old OpenAI config is kept commented in `.env`.
+- **Rationale:** The Anthropic key was already funded and verified working (task normalization + call summaries). Haiku is the latency/cost-appropriate tier for voice turns (observed LLM TTFB 0.6-0.7 s after warmup, 2.2 s first turn). The swap validated the D-5 provider-swap mechanism end-to-end, including tool calling.
+- **Consequences:** Live calls revealed residual role confusion on haiku (agent slips into receptionist role at the patient-data stage) despite an explicit role block in the prompt. Open follow-up: tune the prompt further, try a stronger model (claude-sonnet-4-6 or restored gpt-4o-mini) and compare, or keep haiku and add few-shot examples. Cost envelope per D-5 must be rechecked if the model tier changes.

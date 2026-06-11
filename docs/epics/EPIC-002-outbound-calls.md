@@ -1,6 +1,6 @@
 # EPIC-002 - Outbound Calls
 
-**Status:** Live-verified hello-world (2026-06-11 evening): real Twilio call over Cloudflare Tunnel completed end-to-end - RU disclosure spoken first, Deepgram/Cartesia/LLM pipeline worked, transcript + LLM summary delivered, Cartesia TTFB 0.17 s. Plan phases A-C done; phase D (real restaurant booking, acceptance pass) pending, plus live TODOs: busy-vs-no-answer routing from Twilio callbacks, kill-worker-mid-call recovery test.
+**Status:** Multi-turn live conversations work (2026-06-11 night session): 4 live calls to owner's phone; full loop verified (Twilio paid account, Cloudflare quick tunnel, Deepgram STT, claude-haiku-4-5 via OpenAI-compat per D-11, Cartesia TTS; LLM TTFB 0.6-0.7 s warm). Blocking quality bugs found live, fix before phase D: (1) callee's first/early utterances are lost - ~33 s from disclosure to first registered user turn, speech during bot speech and short replies ("si, dime") don't trigger inference (smart-turn `strategy: None`); (2) residual role confusion on haiku - agent slips into receptionist role at the patient-data stage ("¿A nombre de quién hago la reserva?") even after the explicit role block. Phase D (real restaurant booking) unblocked by Twilio upgrade but waits for these fixes. Older TODOs stand: busy-vs-no-answer routing, kill-worker-mid-call recovery, Twilio 400 error bodies not logged.
 **Owner:** Nikita
 **Goal:** Enable the assistant to place outbound calls, converse safely, stream transcript/events, and produce a summary.
 

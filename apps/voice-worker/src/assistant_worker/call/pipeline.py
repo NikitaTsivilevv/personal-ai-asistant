@@ -34,6 +34,7 @@ try:  # heavy optional deps
     from pipecat.audio.vad.silero import SileroVADAnalyzer
     from pipecat.frames.frames import (
         EndFrame,
+        InputAudioRawFrame,
         InterimTranscriptionFrame,
         LLMMessagesAppendFrame,
         MetricsFrame,
@@ -99,6 +100,38 @@ if PIPECAT_AVAILABLE:
         UserStartedSpeakingFrame,
         UserStoppedSpeakingFrame,
     )
+
+    class InboundAudioProbe(FrameProcessor):
+        """Logs inbound audio frame count and peak amplitude.
+
+        Diagnoses "bot hears nothing" by separating the failure modes: zero
+        frames = media not reaching the worker (Twilio/tunnel); frames with
+        peak ~0 = audio arrives but is silence (codec/serializer).
+        """
+
+        def __init__(self, log_every: int = 250) -> None:
+            super().__init__()
+            self._log_every = log_every
+            self._frames = 0
+            self._peak = 0
+
+        async def process_frame(self, frame, direction) -> None:
+            await super().process_frame(frame, direction)
+            if isinstance(frame, InputAudioRawFrame):
+                import array
+
+                self._frames += 1
+                if frame.audio:
+                    chunk_peak = max(abs(s) for s in array.array("h", frame.audio))
+                    self._peak = max(self._peak, chunk_peak)
+                if self._frames % self._log_every == 1:
+                    logger.info(
+                        "audio-in probe: %d frames, peak amplitude since last log=%d",
+                        self._frames,
+                        self._peak,
+                    )
+                    self._peak = 0
+            await self.push_frame(frame, direction)
 
 
 async def read_stream_start(websocket: WebSocket) -> dict:
@@ -188,6 +221,7 @@ async def run_call_pipeline(
     pipeline = Pipeline(
         [
             transport.input(),
+            InboundAudioProbe(),
             stt,
             pause_gate,
             user_aggregator,
