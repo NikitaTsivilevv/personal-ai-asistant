@@ -34,5 +34,5 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Local tunnel session logs
-.cloudflared-session.log
+# Local process/tunnel session logs (cloudflared, api, bot, worker)
+*-session.log
