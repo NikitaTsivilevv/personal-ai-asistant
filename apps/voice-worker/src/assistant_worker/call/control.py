@@ -6,6 +6,7 @@ Only one consumer may BRPOP it, so this router dispatches:
 - whisper  -> on_whisper callback (inject into agent context)
 - hangup   -> on_hangup callback (graceful wrap-up)
 - cancel   -> on_hangup callback (same handling mid-call)
+- pause/resume -> on_pause callback (freeze/unfreeze the agent, EPIC-003 C1)
 - approval_resolved -> internal queue consumed by CallToolbox.request_approval
 """
 
@@ -30,11 +31,13 @@ class ControlRouter:
         *,
         on_whisper: Callable[[str], Awaitable[None]] | None = None,
         on_hangup: Callable[[str], Awaitable[None]] | None = None,
+        on_pause: Callable[[bool], Awaitable[None]] | None = None,
     ) -> None:
         self._redis = redis
         self._run_id = run_id
         self._on_whisper = on_whisper
         self._on_hangup = on_hangup
+        self._on_pause = on_pause
         self._resolutions: asyncio.Queue[ControlMessage] = asyncio.Queue()
         self._task: asyncio.Task | None = None
 
@@ -71,6 +74,9 @@ class ControlRouter:
         elif msg.type in ("hangup", "cancel"):
             if self._on_hangup is not None:
                 await self._on_hangup(msg.type)
+        elif msg.type in ("pause", "resume"):
+            if self._on_pause is not None:
+                await self._on_pause(msg.type == "pause")
         elif msg.type == "approval_resolved":
             await self._resolutions.put(msg)
         else:

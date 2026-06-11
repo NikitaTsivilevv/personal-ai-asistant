@@ -122,6 +122,7 @@ async def test_whisper_passthrough_during_wait(client, fake_redis, task_payload)
 async def test_control_router_routes_messages(fake_redis):
     whispers: list[str] = []
     hangups: list[str] = []
+    pauses: list[bool] = []
 
     async def on_whisper(text: str) -> None:
         whispers.append(text)
@@ -129,10 +130,17 @@ async def test_control_router_routes_messages(fake_redis):
     async def on_hangup(kind: str) -> None:
         hangups.append(kind)
 
-    router = ControlRouter(fake_redis, "run-x", on_whisper=on_whisper, on_hangup=on_hangup)
+    async def on_pause(paused: bool) -> None:
+        pauses.append(paused)
+
+    router = ControlRouter(
+        fake_redis, "run-x", on_whisper=on_whisper, on_hangup=on_hangup, on_pause=on_pause
+    )
     router.start()
     try:
         await send_control(fake_redis, "run-x", ControlMessage(type="whisper", text="тише"))
+        await send_control(fake_redis, "run-x", ControlMessage(type="pause"))
+        await send_control(fake_redis, "run-x", ControlMessage(type="resume"))
         await send_control(fake_redis, "run-x", ControlMessage(type="hangup"))
         await send_control(
             fake_redis, "run-x",
@@ -145,6 +153,7 @@ async def test_control_router_routes_messages(fake_redis):
         await asyncio.sleep(0.1)
         assert whispers == ["тише"]
         assert hangups == ["hangup"]
+        assert pauses == [True, False]
     finally:
         await router.stop()
 

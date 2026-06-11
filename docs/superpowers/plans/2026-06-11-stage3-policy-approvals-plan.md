@@ -18,7 +18,7 @@
 
 ## Phase C - In-call human control
 
-- [ ] C1. Pause automation + Whisper polish (queue whispers, apply at next turn).
+- [x] C1. Pause automation + Whisper polish (queue whispers, apply at next turn). *(POST /runs/{id}/pause|resume -> control list -> PauseGate processor swallows LLM-triggering frames while paused, transcript keeps streaming; web page Pause/Resume button; whisper already queued via LLMMessagesAppendFrame at next turn. Live verification pending with C2/C3.)*
 - [ ] C2. Transfer to me: bridge user's phone into the call via Twilio.
 - [ ] C3. Take over: browser-mic WebRTC leg; assistant goes silent, keeps transcribing.
 
