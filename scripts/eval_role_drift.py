@@ -5,6 +5,10 @@ system prompt and checks the assistant STATES the allowed name instead of asking
 for it. Run two models (claude-haiku-4-5 vs claude-sonnet-4-6) to get D-11 data
 without a phone. CI uses the FakeClient in the tests; real runs need an API key.
 
+Note: this harness calls the chat-completions API WITHOUT the function tools the
+production worker registers, so results are a tool-free approximation of the live
+path; read the haiku-vs-sonnet comparison with that caveat.
+
 Usage (real models):
     LLM_API_KEY=... LLM_BASE_URL=https://api.anthropic.com/v1/ \
         uv run python -m scripts.eval_role_drift --model claude-haiku-4-5
@@ -24,7 +28,7 @@ from assistant_worker.call.agent import (
 )
 
 _ASK_MARKERS = {
-    "es": ["a nombre de quién", "a nombre de quien", "cómo se llama", "su nombre"],
+    "es": ["a nombre de quién", "a nombre de quien", "cómo se llama"],
     "en": ["what name", "your name", "whom should"],
     "ru": ["на чьё имя", "на чье имя", "как вас зовут"],
 }
@@ -47,7 +51,7 @@ def evaluate_turn(*, client, allowed_name: str, language: str) -> RoleDriftResul
     )
     system_prompt = build_system_prompt(config)
     history = [{"role": "user", "content": {
-        "es": "¿A nombre de quién hago la reserva?",
+        "es": "Perfecto, ¿y a nombre de quién lo dejo?",
         "en": "What name should I put the booking under?",
         "ru": "На чьё имя оформляем запись?",
     }[language]}]
