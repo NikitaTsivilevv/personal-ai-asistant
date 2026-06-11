@@ -1,7 +1,7 @@
 # PROJECT_CONTEXT.md - Personal AI Assistant
 
-**Last refreshed:** 2026-06-11 (evening session)
-**Status:** Stage 1 (EPIC-001) implemented (PR #1, branch `feature/stage1-control-plane`); Stage 2 (EPIC-002) code-complete skeleton on `feature/stage2-outbound-calls` (PR #2, stacked on stage 1): Pipecat 1.3 pipeline, call state machine, disclosure-first agent, policy-wired tools, Twilio dial-out/webhooks, retry, crash recovery, live-call web page. 59 tests pass. Everything blocked on service registrations (Telegram, Neon/Supabase, Upstash, Anthropic, Twilio, Deepgram, Cartesia, conversation LLM) - placeholders in `.env.example`. Next: register services, live-verify stage 1 acceptance from phone, then stage 2 plan phase A (hello-world call).
+**Last refreshed:** 2026-06-11 (late session)
+**Status:** PRs #1-#5 merged to `main`. Stage 1 live-verified server-side (e2e on real Postgres + Upstash: queue -> simulate -> approval -> done). Stage 2: real hello-world call succeeded (Twilio -> Cloudflare Tunnel -> Pipecat -> Deepgram/Cartesia/gpt-4o-mini, RU disclosure, transcript + summary); phase D (real booking) pending. Stage 3 (EPIC-003): policy engine v1 (rules-as-data, hard floor in code, D-10), policy_decision audit, approval expiry 120s, profile facts with allowed_scenarios (/facts API + bot commands), pause automation - phases A/B/C1 done; C2 transfer, C3 take-over, D live scenarios pending (need live calls). 81 tests, ruff clean. Provider pricing verified ~$0.04/min landline (docs/research/2026-06-11-provider-pricing.md). Tails: stage-1 phone check from Telegram, .env DATABASE_URL still has postgresql:// scheme (works only via env override; replace with postgresql+asyncpg://), quick-tunnel URL is ephemeral.
 
 ## Current Goal
 
@@ -64,13 +64,15 @@ For the next session, read:
 
 1. `AGENTS.md`
 2. This file
-3. `DECISIONS.md` (D-9 covers stage 1 implementation choices)
-4. The relevant epic in `docs/epics/`
+3. `DECISIONS.md` (D-9 stage-1 choices, D-10 policy engine)
+4. `docs/superpowers/handovers/HANDOVER-2026-06-11-stage2-live-stage3-policy.md`
+5. The relevant epic in `docs/epics/`
 
-Immediate next steps:
+Immediate next steps (a live session with Nikita on the phone):
 
-1. Merge PR #1 (stage 1) then PR #2 (stage 2 skeleton).
-2. Register services: Telegram bot (@BotFather), Neon/Supabase Postgres, Upstash Redis, Anthropic key, Twilio (+ Spanish number), Deepgram, Cartesia, conversation LLM key; fill `.env` from `.env.example`. Recheck provider pricing (stage 2 plan A1) and record in `docs/research/`.
-3. Live-verify EPIC-001 acceptance criteria 1-4 from a phone (simulate mode).
-4. Stage 2 plan A3: hello-world call via Cloudflare Tunnel (`WORKER_MODE=call`, `uv sync --all-packages --extra call`), then phase D real booking.
+1. Prep: fix `DATABASE_URL` scheme in `.env` (`postgresql+asyncpg://`); start cloudflared + update `PUBLIC_WS_URL` if the quick-tunnel URL changed; start api/bot/worker; fill profile facts via bot (`/fact_add`).
+2. Stage-1 phone check (EPIC-001 acceptance 1-4): `/new` in Telegram, Approve and Reject runs, summary push, live web page.
+3. EPIC-003 phase D live: doctor/insurance/restaurant scenario calls to own phone - verify deny phrase, sensitive-data approval, approval expiry wrap-up, pause/resume, whisper.
+4. EPIC-002 phase D1: real restaurant booking; capture transcript + failure notes in `docs/research/`; busy-vs-no-answer routing from Twilio callbacks.
+5. Then EPIC-003 C2 (Transfer to me - Twilio bridge) and C3 (Take over - WebRTC), designed and tested live.
 

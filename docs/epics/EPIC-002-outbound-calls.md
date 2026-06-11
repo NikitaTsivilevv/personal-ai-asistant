@@ -1,6 +1,6 @@
 # EPIC-002 - Outbound Calls
 
-**Status:** Code-complete skeleton (2026-06-11): call state machine, agent core with hardcoded AI disclosure (ES/EN/RU), policy-wired tools, Pipecat 1.3 pipeline (verified against installed package), Twilio dial-out + webhooks, retry/backoff, crash-recovery sweeper, post-call summary, live-call web page, per-turn metrics. NOT verified with real audio/telephony - plan phases A (providers, hello-world call) and D (real restaurant booking) blocked on Twilio/Deepgram/Cartesia/LLM registrations.
+**Status:** Live-verified hello-world (2026-06-11 evening): real Twilio call over Cloudflare Tunnel completed end-to-end - RU disclosure spoken first, Deepgram/Cartesia/LLM pipeline worked, transcript + LLM summary delivered, Cartesia TTFB 0.17 s. Plan phases A-C done; phase D (real restaurant booking, acceptance pass) pending, plus live TODOs: busy-vs-no-answer routing from Twilio callbacks, kill-worker-mid-call recovery test.
 **Owner:** Nikita
 **Goal:** Enable the assistant to place outbound calls, converse safely, stream transcript/events, and produce a summary.
 

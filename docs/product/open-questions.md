@@ -21,8 +21,8 @@ Track unresolved product, architecture, provider, compliance, and UX questions.
 
 ## Approval Policy
 
-- Which actions are allowed without approval for insurance, doctor, restaurant, and information-gathering scenarios?
-- What should happen if approval is needed while the other party is waiting on the line?
+- ~~Which actions are allowed without approval for insurance, doctor, restaurant, and information-gathering scenarios?~~ Resolved 2026-06-11 (D-10): declarative per-scenario rule profiles in `assistant_policy/rules/`; tune from live audit data (EPIC-003 phase D).
+- ~~What should happen if approval is needed while the other party is waiting on the line?~~ Resolved 2026-06-11 (D-10): wait phrase + 120 s expiry -> approval row `expired`, agent wraps up gracefully and ends the call.
 
 ## Calendar And Contacts
 
@@ -38,7 +38,7 @@ Track unresolved product, architecture, provider, compliance, and UX questions.
 
 - ~~Which API/backend framework should be used for the MVP?~~ Resolved 2026-06-11 (D-8): FastAPI + aiogram (Python), minimal Next.js web.
 - ~~Which telephony provider should be used for Spain first?~~ Resolved 2026-06-11 (D-5): Twilio.
-- Which exact Deepgram/LLM/Cartesia models and prices to use - recheck pricing/latency right before EPIC-002 implementation (D-5 fixes the providers, not the models).
+- ~~Which exact Deepgram/LLM/Cartesia models and prices to use?~~ Resolved 2026-06-11: Deepgram Nova-3 / Cartesia Sonic / gpt-4o-mini confirmed, ~$0.04/min landline all-in (`docs/research/2026-06-11-provider-pricing.md`).
 
 ## Commercialization And Compliance
 

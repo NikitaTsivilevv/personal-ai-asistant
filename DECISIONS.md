@@ -101,3 +101,17 @@ Entry format:
 - **Rationale:** uv is the fastest current Python workspace tool and gives one lockfile. A separate bot process keeps long-polling out of the API's lifecycle and lets it restart independently. Lists give at-least-once handoff where exactly one consumer must act (queue, worker unblock); pub/sub is fan-out for observers where missing a message is tolerable. sqlite/fakeredis keep tests free of provisioned infra (no service registrations yet).
 - **Consequences:** Queue has no persistence guarantees beyond Redis durability - acceptable for stage 1, revisit (streams/consumer groups) in EPIC-006. Bot deployment is a fourth process. JSON columns use JSONB on Postgres via `with_variant`, so sqlite tests don't exercise JSONB-specific behavior.
 
+## D-10 - Policy engine v1: rules as data, hard floor in code, scenario profiles
+
+- **Date:** 2026-06-11
+- **Status:** Accepted
+- **Context:** EPIC-003 required turning the stage-1 policy stub into a real engine. Open choices: where rules live, how the financial/legal/medical safety rule is enforced, and how per-scenario behavior is selected.
+- **Decision:**
+  - Action taxonomy and rule schema live in `assistant_shared.policy`; rules are declarative JSON profiles shipped inside `assistant_policy/rules/` (one file per scenario: generic, insurance, doctor, restaurant, info_gathering), first match wins, generic is the fallback for unknown scenarios.
+  - The safety hard floor is enforced in engine code, not rules: `agree_payment`, `accept_terms`, `say_sensitive`, and high-sensitivity disclosures can never resolve to `allow`, regardless of rule content.
+  - `structured_goal.scenario` (default "generic") selects the profile. Profile facts carry `allowed_scenarios`; the worker feeds the same scenario-aware fact allowlist to both the agent prompt and the engine.
+  - Every decision carries a rule id + inputs hash and is pushed as a `policy_decision` run event, audited with `actor=policy`.
+  - In-call approvals expire after 120 s (configurable): the approval row becomes `expired`, the run resumes, the agent speaks a wrap-up phrase instead of hanging.
+- **Rationale:** Rules-as-data keeps the engine ~200 lines and the matrix fully testable; a code-level floor means no rule file edit can weaken the AGENTS.md safety rule; rule ids + hashes make the audit trail reproducible (EU positioning per D-7).
+- **Consequences:** New scenarios = new JSON file + tests, no engine changes. The LLM-facing tool argument enum is mapped to the taxonomy in the worker; adding actions touches both. JSON profiles ship inside the wheel - rule changes require redeploys until a DB-backed rule store is justified.
+

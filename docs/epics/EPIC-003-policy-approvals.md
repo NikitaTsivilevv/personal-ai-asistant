@@ -1,6 +1,6 @@
 # EPIC-003 - Policy And Approvals
 
-**Status:** In progress (2026-06-11): engine v1 + rule files + worker wiring + approval expiry + profile facts management shipped (plan phases A, B); in-call controls (C) and live scenario validation (D) pending
+**Status:** In progress (2026-06-11): engine v1 + rule files + worker wiring + approval expiry + profile facts management + pause automation shipped (plan phases A, B, C1; PRs #3-#5); C2 Transfer-to-me, C3 Take-over, and live scenario validation (D) pending - all need live calls
 **Owner:** Nikita
 **Goal:** Define and enforce what the assistant may say or do without user confirmation.
 
