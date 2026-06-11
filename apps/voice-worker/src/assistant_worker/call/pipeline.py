@@ -65,6 +65,11 @@ try:  # heavy optional deps
         FastAPIWebsocketParams,
         FastAPIWebsocketTransport,
     )
+    from pipecat.turns.user_stop import (
+        SpeechTimeoutUserTurnStopStrategy,
+        TurnAnalyzerUserTurnStopStrategy,
+    )
+    from pipecat.turns.user_turn_strategies import UserTurnStrategies
 
     PIPECAT_AVAILABLE = True
 except ImportError:  # pragma: no cover - exercised only without the extra
@@ -94,13 +99,16 @@ if PIPECAT_AVAILABLE:
     #    (user_turn_processor.py:194). No separate flag on PipelineParams.
 
     def build_vad_analyzer() -> "SileroVADAnalyzer":
-        """Silero VAD tuned for short Spanish call-centre replies.
+        """Silero VAD wired onto the user aggregator (the actual turn-detection fix).
 
-        Default stop_secs (0.8s) was too long: short utterances never closed a
-        turn. 0.4s closes turns faster while staying above word-gap pauses.
+        The previous `vad_analyzer=` kwarg on FastAPIWebsocketParams was silently
+        ignored, so no VADController existed and user turns never closed. The real
+        default VAD_STOP_SECS is 0.2s; 0.3s is a slightly more conservative silence
+        window to avoid clipping mid-utterance pauses in call-centre audio, while
+        smart-turn V3 remains the primary semantic end-of-turn signal.
         """
         return SileroVADAnalyzer(
-            params=VADParams(confidence=0.6, start_secs=0.2, stop_secs=0.4, min_volume=0.5)
+            params=VADParams(confidence=0.6, start_secs=0.2, stop_secs=0.3, min_volume=0.5)
         )
 
     def build_turn_analyzer():
@@ -276,12 +284,6 @@ async def run_call_pipeline(
     #     explicitly to honour the VAD-only fallback when no model loads.
     #   - Barge-in: enable_interruptions defaults True on the (default)
     #     VADUserTurnStartStrategy (base_user_turn_start_strategy.py:55).
-    from pipecat.turns.user_stop import (
-        SpeechTimeoutUserTurnStopStrategy,
-        TurnAnalyzerUserTurnStopStrategy,
-    )
-    from pipecat.turns.user_turn_strategies import UserTurnStrategies
-
     turn_analyzer = build_turn_analyzer()
     if turn_analyzer is not None:
         stop_strategies = [TurnAnalyzerUserTurnStopStrategy(turn_analyzer=turn_analyzer)]

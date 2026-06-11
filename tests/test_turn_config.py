@@ -10,7 +10,7 @@ from assistant_worker.call.pipeline import (  # noqa: E402  (import after import
 def test_vad_analyzer_uses_tuned_params():
     vad = build_vad_analyzer()
     params = vad.params  # SileroVADAnalyzer stores VADParams on .params
-    assert params.stop_secs <= 0.5
+    assert params.stop_secs == 0.3
     assert 0.0 < params.confidence <= 1.0
     assert params.min_volume >= 0.0
 
