@@ -1,0 +1,25 @@
+[project]
+name = "assistant-bot"
+version = "0.1.0"
+description = "Telegram bot: task creation, status, approvals (aiogram)"
+requires-python = ">=3.12"
+dependencies = [
+    "aiogram>=3.13",
+    "httpx>=0.27",
+    "anthropic>=0.40",
+    "pydantic-settings>=2.6",
+    "assistant-shared",
+]
+
+[tool.uv.sources]
+assistant-shared = { workspace = true }
+
+[project.scripts]
+assistant-bot = "assistant_bot.main:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/assistant_bot"]

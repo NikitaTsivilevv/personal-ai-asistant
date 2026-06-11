@@ -1,6 +1,6 @@
 # EPIC-001 - Control Plane
 
-**Status:** Spec and plan written (2026-06-11), implementation not started
+**Status:** Implemented except live Telegram/web verification (2026-06-11). Monorepo scaffolded; schema v1 + migrations; task/approval/event API with SSE; Redis queue + stub worker + policy stub; aiogram bot and web SSE stub written. 26 automated tests pass. Remaining: register Telegram bot / provision Neon+Upstash, then verify acceptance criteria 1-4 from a phone (criteria 5-6 verified by tests).
 **Owner:** Nikita
 **Goal:** Build the basic web/API layer for creating tasks, tracking runs, managing approvals, and viewing results.
 

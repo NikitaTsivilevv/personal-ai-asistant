@@ -1,0 +1,29 @@
+[project]
+name = "assistant-api"
+version = "0.1.0"
+description = "Control-plane HTTP API: tasks, runs, approvals, run events"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic-settings>=2.6",
+    "sse-starlette>=2.1",
+    "assistant-shared",
+    "assistant-database",
+    "assistant-policy",
+]
+
+[tool.uv.sources]
+assistant-shared = { workspace = true }
+assistant-database = { workspace = true }
+assistant-policy = { workspace = true }
+
+[project.scripts]
+assistant-api = "assistant_api.main:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/assistant_api"]
