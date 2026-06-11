@@ -1,6 +1,6 @@
 # EPIC-003 - Policy And Approvals
 
-**Status:** In progress (2026-06-11): engine v1 + rule files + worker wiring + approval expiry + profile facts management + pause automation shipped (plan phases A, B, C1; PRs #3-#5); C2 Transfer-to-me, C3 Take-over, and live scenario validation (D) pending - all need live calls
+**Status:** In progress (2026-06-11): engine v1 + rule files + worker wiring + approval expiry + profile facts management + pause automation shipped (plan phases A, B, C1; PRs #3-#5); C2 Transfer-to-me, C3 Take-over, and live scenario validation (D) pending. Live session 2026-06-11 night: profile facts seeded (nie=high/default, car plate=medium/insurance, name lowered to low); found that high-sensitivity fact values sat in the prompt unmarked, so the agent could say them without approval - mitigated with a `[SENSITIVE]` prompt marker + rule requiring `request_approval(share_sensitive_data)` (prompt-level only; structural value withholding until approval is backlog). Scenario D runs blocked on EPIC-002 conversation-quality bugs (turn detection, role drift).
 **Owner:** Nikita
 **Goal:** Define and enforce what the assistant may say or do without user confirmation.
 

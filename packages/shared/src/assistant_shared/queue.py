@@ -10,12 +10,21 @@ Conventions:
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import time
 from urllib.parse import urlparse
 
 import redis.asyncio as aioredis
+from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+
+# Pause before re-polling after a dropped connection so a Redis outage does not
+# turn the poll loop into a hot spin; redis-py reconnects on the next command.
+_RECONNECT_DELAY_S = 1.0
 
 TASK_QUEUE_KEY = "queue:task_runs"
 EVENTS_CHANNEL = "events:runs"
@@ -70,6 +79,10 @@ async def dequeue_run(redis: aioredis.Redis, timeout: int = 5) -> QueuedRun | No
         item = await redis.brpop(TASK_QUEUE_KEY, timeout=timeout)
     except TimeoutError:
         return None
+    except RedisConnectionError as exc:
+        logger.warning("redis connection dropped during dequeue, will retry: %s", exc)
+        await asyncio.sleep(_RECONNECT_DELAY_S)
+        return None
     if item is None:
         return None
     _, raw = item
@@ -92,6 +105,10 @@ async def wait_control(
         try:
             item = await redis.brpop(key, timeout=max(1, min(5, int(remaining))))
         except TimeoutError:
+            continue
+        except RedisConnectionError as exc:
+            logger.warning("redis connection dropped during control wait, will retry: %s", exc)
+            await asyncio.sleep(_RECONNECT_DELAY_S)
             continue
         if item is None:
             continue

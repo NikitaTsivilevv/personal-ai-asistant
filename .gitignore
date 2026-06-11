@@ -33,3 +33,6 @@ logs/
 Thumbs.db
 .idea/
 .vscode/
+
+# Local tunnel session logs
+.cloudflared-session.log

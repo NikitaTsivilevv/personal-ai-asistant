@@ -72,6 +72,32 @@ def test_prompt_contains_rules_objective_and_facts():
     assert "AUTONOMY LEVEL: 1/3" in prompt
 
 
+def test_prompt_states_caller_role_explicitly():
+    # Regression: haiku introduced itself as calling FROM the callee
+    # ("llamando desde Denta") because the prompt only said "CALLING: Дента".
+    config = AgentConfig(goal=_goal(), language="es", target_name="Дента")
+    prompt = build_system_prompt(config)
+    assert "NOT your client" in prompt
+    assert "on behalf of your client" in prompt
+    assert "never introduce yourself as calling from" in prompt
+
+
+def test_high_sensitivity_facts_marked_for_approval_in_prompt():
+    # High facts may be visible to the agent but must be gated behind
+    # request_approval(share_sensitive_data) - the prompt must say so.
+    config = AgentConfig(
+        goal=_goal(),
+        facts=[
+            ProfileFactView(key="nie", value="Y1715405X", sensitivity="high", allowed_by_default=True),
+            ProfileFactView(key="имя", value="Никита", sensitivity="low", allowed_by_default=True),
+        ],
+    )
+    prompt = build_system_prompt(config)
+    assert "nie: Y1715405X [SENSITIVE" in prompt
+    assert "имя: Никита [SENSITIVE" not in prompt
+    assert "share_sensitive_data" in prompt
+
+
 def test_whispers_appended_to_prompt():
     config = AgentConfig(goal=_goal(), whispers=["Соглашайся только до 50 евро"])
     prompt = build_system_prompt(config)
