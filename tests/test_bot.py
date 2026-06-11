@@ -35,3 +35,45 @@ def test_bot_modules_import():
     from assistant_bot import api_client, handlers, main, notifier  # noqa: F401
 
     assert handlers.router is not None
+
+
+def test_parse_fact_add_full_form():
+    from assistant_bot.handlers import parse_fact_add
+
+    parsed = parse_fact_add("дата рождения = 12.05.1990 | high | doctor,insurance")
+    assert parsed == {
+        "key": "дата рождения",
+        "value": "12.05.1990",
+        "sensitivity": "high",
+        "allowed_by_default": False,
+        "allowed_scenarios": ["doctor", "insurance"],
+    }
+
+
+def test_parse_fact_add_minimal_and_default_flag():
+    from assistant_bot.handlers import parse_fact_add
+
+    parsed = parse_fact_add("имя = Никита | low | default")
+    assert parsed["key"] == "имя"
+    assert parsed["value"] == "Никита"
+    assert parsed["sensitivity"] == "low"
+    assert parsed["allowed_by_default"] is True
+    assert parsed["allowed_scenarios"] == []
+
+    minimal = parse_fact_add("город = Барселона")
+    assert minimal["sensitivity"] == "medium"
+
+
+def test_parse_fact_add_value_with_equals_sign():
+    from assistant_bot.handlers import parse_fact_add
+
+    parsed = parse_fact_add("email = a=b@example.com")
+    assert parsed["key"] == "email"
+    assert parsed["value"] == "a=b@example.com"
+
+
+def test_parse_fact_add_rejects_garbage():
+    from assistant_bot.handlers import parse_fact_add
+
+    assert parse_fact_add("просто текст без равно") is None
+    assert parse_fact_add("= значение без ключа") is None

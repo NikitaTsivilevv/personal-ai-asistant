@@ -19,7 +19,7 @@ from assistant_shared.schemas import RunStatus, StructuredGoal
 
 from ..events_client import RunClient
 from ..settings import WorkerSettings
-from .agent import AgentConfig, resolve_language
+from .agent import AgentConfig, ProfileFactView, resolve_language
 from .metrics import MetricsCollector
 from .retry import RetryPolicy
 from .state import CallState
@@ -72,10 +72,36 @@ async def fetch_task(http: httpx.AsyncClient, settings: WorkerSettings, task_id:
     return resp.json()
 
 
-def agent_config_from_task(task: dict) -> AgentConfig:
+async def fetch_facts(http: httpx.AsyncClient, settings: WorkerSettings) -> list[ProfileFactView]:
+    """Profile facts for the agent (EPIC-003 B2). A facts outage must not
+    block calling - the agent just runs without profile facts."""
+    try:
+        resp = await http.get(f"{settings.api_base_url}/facts")
+        resp.raise_for_status()
+    except httpx.HTTPError:
+        logger.exception("failed to fetch profile facts; continuing without them")
+        return []
+    return [
+        ProfileFactView(
+            key=row["key"],
+            value=row["value"],
+            sensitivity=row.get("sensitivity", "medium"),
+            allowed_by_default=row.get("allowed_by_default", False),
+            allowed_scenarios=row.get("allowed_scenarios", []),
+        )
+        for row in resp.json()
+    ]
+
+
+def agent_config_from_task(task: dict, facts: list[ProfileFactView] | None = None) -> AgentConfig:
     goal = StructuredGoal.model_validate(task.get("structured_goal") or {})
     language = resolve_language(task.get("language_pref"), task.get("target_phone"))
-    return AgentConfig(goal=goal, language=language, target_name=task.get("target_name"))
+    return AgentConfig(
+        goal=goal,
+        language=language,
+        target_name=task.get("target_name"),
+        facts=facts or [],
+    )
 
 
 async def run_call(
@@ -92,7 +118,7 @@ async def run_call(
         await run_client.failed("task has no target_phone")
         return
 
-    config = agent_config_from_task(task)
+    config = agent_config_from_task(task, facts=await fetch_facts(http, settings))
     policy = RetryPolicy(
         max_attempts=settings.retry_max_attempts, base_delay_s=settings.retry_base_delay_s
     )

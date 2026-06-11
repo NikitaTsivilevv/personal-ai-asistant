@@ -123,10 +123,16 @@ class CallToolbox:
     end_outcome: str | None = None
 
     def _policy_ctx(self) -> TaskContext:
+        # The engine's fact allowlist must match what the prompt exposes:
+        # task whitelist plus profile facts usable in this scenario (B2).
+        from .agent import allowed_facts
+
+        fact_keys = {f.key for f in allowed_facts(self.config)}
+        fact_keys.update(self.config.goal.allowed_facts)
         return TaskContext(
             autonomy_level=self.config.goal.autonomy_level,
             scenario=self.config.goal.scenario,
-            allowed_facts=self.config.goal.allowed_facts,
+            allowed_facts=sorted(fact_keys),
         )
 
     async def request_approval(self, action: str, detail: str) -> dict:

@@ -84,6 +84,8 @@ class ProfileFactView:
     value: str
     sensitivity: str = "medium"
     allowed_by_default: bool = False
+    # Scenarios where the fact is usable without per-task whitelisting (B2).
+    allowed_scenarios: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -108,13 +110,17 @@ def resolve_language(language_pref: str | None, target_phone: str | None) -> str
 
 
 def allowed_facts(config: AgentConfig) -> list[ProfileFactView]:
-    """Facts the agent may state without approval: allowed_by_default ones plus
-    those explicitly whitelisted in the task's structured_goal.allowed_facts."""
+    """Facts the agent may use: allowed_by_default ones, those whitelisted in
+    the task's structured_goal.allowed_facts, and those whose allowed_scenarios
+    include the task's policy scenario (EPIC-003 B2)."""
     whitelist = {f.lower() for f in config.goal.allowed_facts}
+    scenario = config.goal.scenario
     return [
         f
         for f in config.facts
-        if f.allowed_by_default or f.key.lower() in whitelist
+        if f.allowed_by_default
+        or f.key.lower() in whitelist
+        or scenario in f.allowed_scenarios
     ]
 
 

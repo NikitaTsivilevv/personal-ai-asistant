@@ -128,3 +128,21 @@ class TaskDetailOut(TaskOut):
 class ApprovalResolve(BaseModel):
     decision: ApprovalStatus  # approved | rejected
     resolved_via: str = "telegram"
+
+
+class ProfileFactCreate(BaseModel):
+    """Create/update a profile fact (EPIC-003 B2). Upserts by key."""
+
+    key: str = Field(min_length=1, max_length=100)
+    value: str
+    sensitivity: str = Field(default="medium", pattern="^(low|medium|high)$")
+    allowed_by_default: bool = False
+    # Policy scenarios where the fact may be used without per-task whitelisting.
+    allowed_scenarios: list[str] = Field(default_factory=list)
+
+
+class ProfileFactOut(ProfileFactCreate):
+    id: str
+    user_id: str
+
+    model_config = {"from_attributes": True}
