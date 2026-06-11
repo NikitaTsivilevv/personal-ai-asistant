@@ -103,3 +103,19 @@ def test_whispers_appended_to_prompt():
     prompt = build_system_prompt(config)
     assert "Соглашайся только до 50 евро" in prompt
     assert "LIVE INSTRUCTIONS" in prompt
+
+
+def test_prompt_includes_role_fewshot_for_es():
+    from assistant_worker.call.agent import AgentConfig, build_system_prompt, ProfileFactView
+    from assistant_shared.schemas import StructuredGoal
+
+    config = AgentConfig(
+        goal=StructuredGoal(objective="Reservar cita", scenario="doctor"),
+        language="es",
+        target_name="Clínica Dental",
+        facts=[ProfileFactView(key="Nombre", value="Nikita", sensitivity="low",
+                               allowed_by_default=True)],
+    )
+    prompt = build_system_prompt(config)
+    assert "EXAMPLE" in prompt
+    assert "a nombre de" in prompt.lower()

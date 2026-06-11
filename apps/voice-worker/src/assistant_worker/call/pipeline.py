@@ -32,6 +32,7 @@ try:  # heavy optional deps
     from pipecat.adapters.schemas.function_schema import FunctionSchema
     from pipecat.adapters.schemas.tools_schema import ToolsSchema
     from pipecat.audio.vad.silero import SileroVADAnalyzer
+    from pipecat.audio.vad.vad_analyzer import VADParams
     from pipecat.frames.frames import (
         EndFrame,
         InputAudioRawFrame,
@@ -51,7 +52,10 @@ try:  # heavy optional deps
     from pipecat.pipeline.runner import PipelineRunner
     from pipecat.pipeline.task import PipelineParams, PipelineTask
     from pipecat.processors.aggregators.llm_context import LLMContext
-    from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
+    from pipecat.processors.aggregators.llm_response_universal import (
+        LLMContextAggregatorPair,
+        LLMUserAggregatorParams,
+    )
     from pipecat.serializers.twilio import TwilioFrameSerializer
     from pipecat.services.cartesia.tts import CartesiaTTSService
     from pipecat.services.deepgram.stt import DeepgramSTTService
@@ -61,6 +65,11 @@ try:  # heavy optional deps
         FastAPIWebsocketParams,
         FastAPIWebsocketTransport,
     )
+    from pipecat.turns.user_stop import (
+        SpeechTimeoutUserTurnStopStrategy,
+        TurnAnalyzerUserTurnStopStrategy,
+    )
+    from pipecat.turns.user_turn_strategies import UserTurnStrategies
 
     PIPECAT_AVAILABLE = True
 except ImportError:  # pragma: no cover - exercised only without the extra
@@ -68,6 +77,55 @@ except ImportError:  # pragma: no cover - exercised only without the extra
 
 
 if PIPECAT_AVAILABLE:
+    # --- pipecat 1.3 turns-API wiring (verified against the installed venv) ---
+    # The pre-1.3 `FastAPIWebsocketParams(vad_analyzer=...)` kwarg was a SILENT
+    # NO-OP: TransportParams (base_transport.py) has no vad_analyzer field and
+    # pydantic ignores the unknown kwarg, so VAD config never took effect and
+    # turns used default behaviour. The 1.3 attach points are:
+    #
+    # 1. VAD attaches on the USER CONTEXT AGGREGATOR, not the transport:
+    #    LLMUserAggregatorParams.vad_analyzer (llm_response_universal.py:160,
+    #    consumed at :649 to build the VADController). NOT on TransportParams.
+    # 2. The smart-turn STOP STRATEGY attaches via the same aggregator's
+    #    user_turn_strategies. The default UserTurnStrategies.stop already is
+    #    [TurnAnalyzerUserTurnStopStrategy(LocalSmartTurnAnalyzerV3())]
+    #    (user_turn_strategies.py:43-51, 74-78), so supplying vad_analyzer is
+    #    enough to get VAD + smart-turn; we pass an explicit list so the
+    #    VAD-only fallback (None analyzer) is also honoured.
+    # 3. Barge-in / interruptions: enable_interruptions defaults to True on
+    #    BaseUserTurnStartStrategy (base_user_turn_start_strategy.py:55),
+    #    inherited by the default VADUserTurnStartStrategy; the user-turn
+    #    processor calls broadcast_interruption() when it is set
+    #    (user_turn_processor.py:194). No separate flag on PipelineParams.
+
+    def build_vad_analyzer() -> "SileroVADAnalyzer":
+        """Silero VAD wired onto the user aggregator (the actual turn-detection fix).
+
+        The previous `vad_analyzer=` kwarg on FastAPIWebsocketParams was silently
+        ignored, so no VADController existed and user turns never closed. The real
+        default VAD_STOP_SECS is 0.2s; 0.3s is a slightly more conservative silence
+        window to avoid clipping mid-utterance pauses in call-centre audio, while
+        smart-turn V3 remains the primary semantic end-of-turn signal.
+        """
+        return SileroVADAnalyzer(
+            params=VADParams(confidence=0.6, start_secs=0.2, stop_secs=0.3, min_volume=0.5)
+        )
+
+    def build_turn_analyzer():
+        """Semantic end-of-turn classifier (smart-turn V3).
+
+        Falls back to None (VAD-only) if the ONNX model can't load offline, so a
+        provisioning host without the model still runs calls.
+        """
+        try:
+            from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import (
+                LocalSmartTurnAnalyzerV3,
+            )
+
+            return LocalSmartTurnAnalyzerV3()
+        except Exception as exc:  # model download / load failure
+            logger.warning("smart-turn V3 unavailable, VAD-only turn-taking: %s", exc)
+            return None
 
     class PauseGate(FrameProcessor):
         """Freezes the agent while "Pause automation" is active (EPIC-003 C1).
@@ -189,11 +247,13 @@ async def run_call_pipeline(
     )
     transport = FastAPIWebsocketTransport(
         websocket=websocket,
+        # VAD is NOT configured here in pipecat 1.3: TransportParams has no
+        # vad_analyzer field, so the old kwarg was a silent no-op. VAD/turn/
+        # barge-in are wired on the user aggregator below.
         params=FastAPIWebsocketParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
             add_wav_header=False,
-            vad_analyzer=SileroVADAnalyzer(),
             serializer=serializer,
         ),
     )
@@ -215,7 +275,36 @@ async def run_call_pipeline(
         [{"role": "system", "content": build_system_prompt(config)}],
         tools=_tool_schemas(),
     )
-    user_aggregator, assistant_aggregator = LLMContextAggregatorPair(context)
+    # pipecat 1.3 turn-taking wiring (see findings comment near build_vad_analyzer):
+    #   - vad_analyzer attaches here, NOT on the transport
+    #     (llm_response_universal.py:160,649 -> VADController).
+    #   - The default user_turn_strategies.stop is
+    #     TurnAnalyzerUserTurnStopStrategy(LocalSmartTurnAnalyzerV3())
+    #     (user_turn_strategies.py:43-51), so we build the strategy list
+    #     explicitly to honour the VAD-only fallback when no model loads.
+    #   - Barge-in: enable_interruptions defaults True on the (default)
+    #     VADUserTurnStartStrategy (base_user_turn_start_strategy.py:55).
+    turn_analyzer = build_turn_analyzer()
+    if turn_analyzer is not None:
+        stop_strategies = [TurnAnalyzerUserTurnStopStrategy(turn_analyzer=turn_analyzer)]
+    else:
+        # VAD-only fallback: a pure VAD/STT-timeout stop strategy with no ML
+        # model, so we don't re-trigger the smart-turn load that just failed.
+        # NOTE: passing user_turn_strategies=None would let pipecat rebuild the
+        # default LocalSmartTurnAnalyzerV3 (user_turn_strategies.py:43-51),
+        # re-hitting the same load failure — hence the explicit strategy here.
+        stop_strategies = [SpeechTimeoutUserTurnStopStrategy()]
+    user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
+        context,
+        user_params=LLMUserAggregatorParams(
+            # VAD attach point in 1.3 (llm_response_universal.py:160,649).
+            vad_analyzer=build_vad_analyzer(),
+            # Smart-turn (or VAD-only) stop strategy; start strategies keep
+            # their default VADUserTurnStartStrategy, whose enable_interruptions
+            # default True drives barge-in (base_user_turn_start_strategy.py:55).
+            user_turn_strategies=UserTurnStrategies(stop=stop_strategies),
+        ),
+    )
 
     pause_gate = PauseGate()
     pipeline = Pipeline(

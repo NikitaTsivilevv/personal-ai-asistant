@@ -77,6 +77,34 @@ one or two sentences."""
 
 _LANGUAGE_NAMES = {"es": "Spanish", "en": "English", "ru": "Russian"}
 
+# Few-shot reinforcing the caller role at the data stage (EPIC-002 role-drift fix).
+ROLE_FEWSHOT: dict[str, str] = {
+    "es": (
+        "EXAMPLE (correct behaviour at the data stage):\n"
+        "Callee: ¿A nombre de quién hago la reserva?\n"
+        "You: A nombre de María García.  <- you STATE the name from ALLOWED FACTS; "
+        "you are the caller, you never ask the callee for your own client's data."
+        " (María García is just an illustrative example — always use the actual "
+        "name from ALLOWED FACTS)."
+    ),
+    "en": (
+        "EXAMPLE (correct behaviour at the data stage):\n"
+        "Callee: And what name should I put the booking under?\n"
+        "You: Under María García.  <- you STATE the name from ALLOWED FACTS; you are the "
+        "caller, you never ask the callee for your own client's data."
+        " (María García is just an illustrative example — always use the actual "
+        "name from ALLOWED FACTS)."
+    ),
+    "ru": (
+        "EXAMPLE (correct behaviour at the data stage):\n"
+        "Callee: На чьё имя оформляем запись?\n"
+        "You: На имя Мария Иванова.  <- you STATE the name from ALLOWED FACTS; you are the "
+        "caller, you never ask the callee for your own client's data."
+        " (Мария Иванова — лишь иллюстративный пример; всегда используйте "
+        "реальное имя из ALLOWED FACTS)."
+    ),
+}
+
 
 @dataclass
 class ProfileFactView:
@@ -165,6 +193,8 @@ def build_system_prompt(config: AgentConfig) -> str:
         + "\n\nALLOWED FACTS:\n"
         + facts_block
         + f"\n\nAUTONOMY LEVEL: {goal.autonomy_level}/3"
+        + "\n\n"
+        + ROLE_FEWSHOT.get(config.language, ROLE_FEWSHOT[DEFAULT_LANGUAGE])
         + whisper_block
     )
 
