@@ -1,0 +1,25 @@
+{
+  "scenario": "insurance",
+  "default_allowed_facts": ["имя", "телефон", "номер полиса"],
+  "rules": [
+    {
+      "id": "ins-cancel-deny",
+      "action": "commit_cancellation",
+      "outcome": "deny",
+      "deny_reason": "Расторжение или закрытие страховых дел требует личного участия клиента (контрактное действие)."
+    },
+    {
+      "id": "ins-change-approval",
+      "action": "commit_change",
+      "outcome": "require_approval",
+      "approval_kind": "other",
+      "question_template": "Страховая предлагает изменение условий: {detail}. Подтвердить?"
+    },
+    {
+      "id": "ins-booking",
+      "action": "commit_booking",
+      "autonomy": [1, 2, 3],
+      "outcome": "allow"
+    }
+  ]
+}

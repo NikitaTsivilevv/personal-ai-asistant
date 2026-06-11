@@ -1,20 +1,20 @@
 # Plan: Stage 3 - Policy Engine And Approvals
 
 **Spec:** `docs/superpowers/specs/2026-06-11-stage3-policy-approvals.md`
-**Epic:** EPIC-003 | **Status:** Draft
+**Epic:** EPIC-003 | **Status:** Phases A + B1 implemented 2026-06-11 (PR #3); B2, C, D pending
 
 ## Phase A - Engine core
 
-- [ ] A1. Action taxonomy + rule schema in `packages/shared`; rule files per scenario in `packages/policy/rules/`.
-- [ ] A2. Engine v1 with full matrix unit tests; level-3 hard floor enforced in code, not rules.
-- [ ] A3. Wire engine into the worker's tool-call path (replace stub); deny phrases; audit_log entries with rule ids.
+- [x] A1. Action taxonomy + rule schema in `packages/shared`; rule files per scenario in `packages/policy/rules/`. *(`assistant_shared/policy.py`; JSON profiles in `assistant_policy/rules/` - generic, insurance, doctor, restaurant, info_gathering. `StructuredGoal.scenario` added.)*
+- [x] A2. Engine v1 with full matrix unit tests; level-3 hard floor enforced in code, not rules. *(Hard floor: agree_payment/accept_terms/say_sensitive + high-sensitivity disclosures never `allow`. Decisions carry rule_id + inputs hash.)*
+- [x] A3. Wire engine into the worker's tool-call path (replace stub); deny phrases; audit_log entries with rule ids. *(`policy_decision` run event -> audit_log with actor=policy; deny returns callee-facing phrase ES/EN/RU.)*
 
-**Checkpoint:** matrix tests green; simulated calls hit allow/approve/deny correctly.
+**Checkpoint:** matrix tests green; simulated calls hit allow/approve/deny correctly. ✓ (73 tests)
 
 ## Phase B - Approvals hardening
 
-- [ ] B1. Approval expiry + in-call wait phrases + graceful wrap-up on expiry/reject.
-- [ ] B2. profile_facts `allowed_scenarios` + `disclose_fact` checks; Telegram command to manage facts.
+- [x] B1. Approval expiry + in-call wait phrases + graceful wrap-up on expiry/reject. *(Default 120s; `approval_expired` event marks the row expired and resumes the run; agent gets a wrap-up phrase + instruction to end_call politely.)*
+- [ ] B2. profile_facts `allowed_scenarios` + `disclose_fact` checks; Telegram command to manage facts. *(Engine-side fact allowlist check is in (code-fact-not-allowed); DB/bot wiring pending.)*
 
 ## Phase C - In-call human control
 

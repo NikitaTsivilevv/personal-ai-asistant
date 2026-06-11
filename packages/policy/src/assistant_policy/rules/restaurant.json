@@ -1,0 +1,24 @@
+{
+  "scenario": "restaurant",
+  "default_allowed_facts": ["имя", "телефон", "количество гостей"],
+  "rules": [
+    {
+      "id": "rest-booking",
+      "action": "commit_booking",
+      "autonomy": [1, 2, 3],
+      "outcome": "allow"
+    },
+    {
+      "id": "rest-cancel",
+      "action": "commit_cancellation",
+      "autonomy": [2, 3],
+      "outcome": "allow"
+    },
+    {
+      "id": "rest-change",
+      "action": "commit_change",
+      "autonomy": [2, 3],
+      "outcome": "allow"
+    }
+  ]
+}

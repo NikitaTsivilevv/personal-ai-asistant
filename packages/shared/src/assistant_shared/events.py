@@ -18,6 +18,11 @@ class RunEventType(str, enum.Enum):
     transcript_segment = "transcript_segment"
     approval_requested = "approval_requested"
     approval_resolved = "approval_resolved"
+    # In-call approval wait expired (EPIC-003 B1): worker resumes the call with
+    # a graceful wrap-up; the API marks the pending approval row expired.
+    approval_expired = "approval_expired"
+    # Every policy engine decision, for the audit trail (EPIC-003 A3).
+    policy_decision = "policy_decision"
     run_completed = "run_completed"
     run_failed = "run_failed"
 
@@ -45,6 +50,20 @@ class ApprovalResolvedData(BaseModel):
     approval_id: str
     status: ApprovalStatus
     resolved_via: str
+
+
+class ApprovalExpiredData(BaseModel):
+    approval_id: str
+
+
+class PolicyDecisionData(BaseModel):
+    rule_id: str
+    inputs_hash: str
+    outcome: str  # allow | require_approval | deny
+    action: str
+    detail: str = ""
+    scenario: str = "generic"
+    autonomy_level: int = 1
 
 
 class RunCompletedData(BaseModel):

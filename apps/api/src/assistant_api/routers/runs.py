@@ -20,6 +20,7 @@ from assistant_shared.queue import ControlMessage, send_control
 
 from assistant_db.models import Approval, Task, TaskRun, TranscriptSegment
 from assistant_shared.events import (
+    ApprovalExpiredData,
     ApprovalRequestedData,
     PublishedRunEvent,
     RunCompletedData,
@@ -104,6 +105,21 @@ async def _apply_event(
             run.failure_reason = data.failure_reason
             task.status = TaskStatus.failed.value
 
+        case RunEventType.approval_expired:
+            data = ApprovalExpiredData.model_validate(event.data)
+            approval = (
+                await session.execute(select(Approval).where(Approval.id == data.approval_id))
+            ).scalar_one_or_none()
+            if approval is None or approval.task_run_id != run.id:
+                raise HTTPException(status_code=404, detail="approval not found for this run")
+            if approval.status == ApprovalStatus.pending.value:
+                approval.status = ApprovalStatus.expired.value
+                approval.resolved_at = now
+                approval.resolved_via = "timeout"
+            # The call continues with a graceful wrap-up (EPIC-003 B1).
+            run.status = RunStatus.running.value
+            task.status = TaskStatus.running.value
+
         case RunEventType.approval_resolved:
             # Resolution happens via POST /approvals/{id}/resolve; the worker
             # never sends this event type.
@@ -127,10 +143,11 @@ async def ingest_run_event(
     task = (await session.execute(select(Task).where(Task.id == run.task_id))).scalar_one()
 
     extra = await _apply_event(session, run, task, event)
+    actor = Actor.policy if event.type == RunEventType.policy_decision else Actor.assistant
     write_audit(
         session,
         user_id=task.user_id,
-        actor=Actor.assistant,
+        actor=actor,
         event_type=f"run.{event.type.value}",
         payload=event.data,
         task_run_id=run.id,

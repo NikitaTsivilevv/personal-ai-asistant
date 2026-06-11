@@ -57,6 +57,15 @@ class RunClient:
         )
         return result["approval_id"]
 
+    async def policy_decision(self, data: dict) -> None:
+        """Audit trail for every policy engine decision (EPIC-003 A3)."""
+        await self.send(RunEvent(type=RunEventType.policy_decision, data=data))
+
+    async def approval_expired(self, approval_id: str) -> None:
+        await self.send(
+            RunEvent(type=RunEventType.approval_expired, data={"approval_id": approval_id})
+        )
+
     async def completed(self, result_summary: str, estimated_cost_cents: int | None = None, **extra) -> None:
         await self.send(
             RunEvent(
