@@ -50,3 +50,5 @@ def create_ws_app(registry: CallRegistry) -> FastAPI:
         except Exception as exc:
             logger.exception("pipeline crashed for run %s", run_id)
             registry.fail(run_id, exc)
+
+    return app

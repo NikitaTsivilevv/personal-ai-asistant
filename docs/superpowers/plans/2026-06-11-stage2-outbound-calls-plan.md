@@ -1,15 +1,15 @@
 # Plan: Stage 2 - Outbound Calls
 
 **Spec:** `docs/superpowers/specs/2026-06-11-stage2-outbound-calls.md`
-**Epic:** EPIC-002 | **Status:** Phases B/C implemented code-complete 2026-06-11 (no live verification yet - blocked on provider registrations). Phase A and D pending.
+**Epic:** EPIC-002 | **Status:** Phases A/B/C done (A live-verified 2026-06-11 evening: real hello-world call over Twilio + Cloudflare Tunnel completed with transcript and summary). Phase D pending.
 
 ## Phase A - Providers and hello-world call
 
-- [ ] A1. Recheck pricing/models (Deepgram, Cartesia, LLM, Twilio ES); record results in `docs/research/`; append a decision if model choices change.
-- [ ] A2. Twilio account, Spanish number, outbound calling enabled; webhook endpoints in FastAPI.
-- [ ] A3. Pipecat hello-world: worker dials a test phone, plays TTS greeting, transcribes replies to logs. (Dev via Cloudflare Tunnel.)
+- [x] A1. Recheck pricing/models (Deepgram, Cartesia, LLM, Twilio ES); record results in `docs/research/`; append a decision if model choices change. *(`docs/research/2026-06-11-provider-pricing.md`: ~$0.04/min landline, within D-5 envelope; no model changes.)*
+- [x] A2. Twilio account, Spanish number, outbound calling enabled; webhook endpoints in FastAPI.
+- [x] A3. Pipecat hello-world: worker dials a test phone, plays TTS greeting, transcribes replies to logs. (Dev via Cloudflare Tunnel.) *(Live call to owner's phone 2026-06-11: RU disclosure spoken first, Cartesia TTFB 0.17s, run completed with LLM summary. Fixed missing `return app` in `call/server.py` found during bring-up.)*
 
-**Checkpoint:** you can talk to a dumb agent on a real phone.
+**Checkpoint:** you can talk to a dumb agent on a real phone. ✓ (2026-06-11)
 
 ## Phase B - Real agent loop
 
