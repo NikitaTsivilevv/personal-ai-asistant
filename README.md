@@ -2,21 +2,52 @@
 
 Personal AI assistant for delegated phone tasks: outbound calls, inbound screening, live control, human approvals, transcripts, summaries, and safe use of personal facts.
 
-The current project is in documentation/bootstrap stage. Read these first:
+Read these first:
 
 1. `AGENTS.md`
 2. `PROJECT_CONTEXT.md`
 3. `docs/product/personal-ai-assistant-tz.md`
 4. The relevant `docs/epics/EPIC-*.md`
 
-Product code will live in this monorepo:
+## Layout
 
 ```text
-apps/web
-apps/api
-apps/voice-worker
-packages/shared
-packages/database
-packages/policy
+apps/web            # Next.js: minimal live-call page (stage 1: raw SSE feed stub)
+apps/api            # FastAPI: tasks, runs, approvals, run events, SSE
+apps/bot            # aiogram Telegram bot: task creation, approvals, summaries
+apps/voice-worker   # Stage 1: stub call simulator; EPIC-002: real Pipecat worker
+packages/shared     # Pydantic schemas, run-event contract, Redis queue helpers
+packages/database   # SQLAlchemy models, Alembic migrations
+packages/policy     # Policy engine (autonomy-level rule table)
 ```
 
+## Setup
+
+Requires [uv](https://docs.astral.sh/uv/) and Node 20+ (web only).
+
+```bash
+uv sync --all-packages          # installs Python 3.12 venv + all workspace packages
+cp .env.example .env            # fill in real values; sqlite/local-redis defaults work for dev
+```
+
+## Run
+
+```bash
+uv run assistant-api            # API on http://127.0.0.1:8000 (docs at /docs)
+uv run assistant-worker         # stub worker consuming the Redis task queue
+uv run assistant-bot            # Telegram bot (needs TELEGRAM_BOT_TOKEN)
+cd apps/web && npm install && npm run dev   # web stub on :3000
+```
+
+Migrations (Postgres or sqlite via `DATABASE_URL`):
+
+```bash
+cd packages/database && uv run alembic upgrade head
+```
+
+## Validate
+
+```bash
+uv run pytest -q                # full test suite (sqlite in-memory + fakeredis)
+uv run ruff check .             # lint
+```

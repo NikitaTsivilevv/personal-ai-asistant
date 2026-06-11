@@ -35,16 +35,17 @@ For a normal task, read only:
 
 Read the full product TZ, old handovers, research notes, or archived decisions only when needed. This keeps agent context and token usage under control.
 
-## Planned Monorepo Layout
+## Monorepo Layout
 
 ```text
 apps/
-  web/            # Dashboard / web UI
-  api/            # HTTP API, auth, tasks, approvals, webhooks
-  voice-worker/   # Long-lived realtime phone sessions
+  web/            # Next.js: minimal live-call page (stage 1: SSE feed stub)
+  api/            # FastAPI: tasks, runs, approvals, run events, SSE
+  bot/            # aiogram Telegram bot: task creation, approvals, summaries
+  voice-worker/   # Stage 1 stub simulator; EPIC-002: real Pipecat worker
 packages/
-  shared/         # Shared types/contracts/utilities
-  database/       # Schema, migrations, DB access helpers
+  shared/         # Pydantic schemas, run-event contract, Redis queue helpers
+  database/       # SQLAlchemy models, Alembic migrations
   policy/         # Policy engine / approval rules
 docs/
   product/
@@ -56,7 +57,7 @@ docs/
   research/
 ```
 
-No application stack has been finalized yet. The TZ suggests possible technologies and providers, but provider/model/pricing decisions must be revalidated before implementation.
+Python services use a uv workspace (root `pyproject.toml`, Python 3.12). Stack decisions are in `DECISIONS.md` (D-5..D-9).
 
 ## Default Workflow
 
@@ -88,12 +89,15 @@ No application stack has been finalized yet. The TZ suggests possible technologi
 
 ## Validation
 
-Validation commands are not established yet. Once apps are scaffolded, document exact commands here:
+From the repo root:
 
 ```text
-apps/web: not established yet
-apps/api: not established yet
-apps/voice-worker: not established yet
+uv run pytest -q          # full Python test suite (api, worker, policy, bot)
+uv run ruff check .       # lint all Python packages
 ```
 
-Until then, documentation changes should at least be checked for internal consistency and broken references.
+Per-app entry points: `uv run assistant-api`, `uv run assistant-worker`, `uv run assistant-bot`.
+Migrations: `cd packages/database && uv run alembic upgrade head` (DATABASE_URL env).
+apps/web: `npm run build` inside `apps/web` (no automated web tests yet).
+
+Documentation changes should be checked for internal consistency and broken references.

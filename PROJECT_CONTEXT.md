@@ -1,7 +1,7 @@
 # PROJECT_CONTEXT.md - Personal AI Assistant
 
-**Last refreshed:** 2026-06-11
-**Status:** Idea and stack validated; core stack decisions accepted (D-5..D-8). Draft specs and plans exist for all seven epics (2026-06-11). No application code has been scaffolded yet. Next: implement Stage 1 (EPIC-001) plan, Phase A.
+**Last refreshed:** 2026-06-11 (evening session)
+**Status:** Stage 1 (EPIC-001) implemented on branch `feature/stage1-control-plane` (GitHub: NikitaTsivilevv/personal-ai-asistant). Monorepo scaffolded, schema v1 + migrations, full control-loop API, stub worker, policy stub, Telegram bot, web SSE stub; 26 tests pass. Blocked on service registrations (Telegram bot token, Neon/Supabase, Upstash, Anthropic key) - all configs are placeholders in `.env.example`. Next: register services, verify acceptance criteria live from a phone, then EPIC-002.
 
 ## Current Goal
 
@@ -64,8 +64,12 @@ For the next session, read:
 
 1. `AGENTS.md`
 2. This file
-3. `DECISIONS.md`
+3. `DECISIONS.md` (D-9 covers stage 1 implementation choices)
 4. The relevant epic in `docs/epics/`
 
-Then either write the first spec/plan or scaffold the monorepo apps after the user confirms the initial implementation scope.
+Immediate next steps:
+
+1. Register services: Telegram bot (@BotFather), Neon/Supabase Postgres, Upstash Redis, Anthropic API key; fill `.env` from `.env.example`.
+2. Run api + worker + bot locally, verify EPIC-001 acceptance criteria 1-4 from a phone.
+3. Merge `feature/stage1-control-plane`, then start EPIC-002 (recheck Deepgram/Cartesia/LLM pricing first - see open-questions.md).
 

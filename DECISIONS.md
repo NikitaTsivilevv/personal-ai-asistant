@@ -88,3 +88,16 @@ Entry format:
 - **Rationale:** The voice worker is unavoidably Python; keeping API/bot in Python avoids duplicating domain models, policy logic, and DB access across two languages. The web surface is small enough that a TS island is cheap.
 - **Consequences:** `packages/shared` holds Pydantic schemas; web types are generated from OpenAPI. Revisit if the web dashboard grows.
 
+## D-9 - Stage 1 implementation choices: uv workspace, separate bot app, Redis lists + pub/sub
+
+- **Date:** 2026-06-11
+- **Status:** Accepted
+- **Context:** Scaffolding EPIC-001 required concrete choices the specs left open: Python dependency management, where the Telegram bot lives (D-8 said "inside or beside the API"), and the queue/event transport shape on Redis.
+- **Decision:**
+  - uv workspace monorepo (root `pyproject.toml`, Python 3.12 pinned) with hatchling-built packages; shared dev deps (pytest, ruff, fakeredis, aiosqlite) at the root.
+  - Telegram bot is a separate app `apps/bot` (own process), not a module inside `apps/api`.
+  - Redis transport: task dispatch via list `queue:task_runs` (LPUSH/BRPOP); per-run control via list `run:{run_id}:control` (approval resolutions, cancellation reach the waiting worker); broadcast via pub/sub channel `events:runs` consumed by SSE endpoints and the bot notifier. Key names and payload models live in `assistant_shared.queue`/`events`.
+  - Tests run against in-memory sqlite (StaticPool) + fakeredis; Postgres/Upstash only via env config.
+- **Rationale:** uv is the fastest current Python workspace tool and gives one lockfile. A separate bot process keeps long-polling out of the API's lifecycle and lets it restart independently. Lists give at-least-once handoff where exactly one consumer must act (queue, worker unblock); pub/sub is fan-out for observers where missing a message is tolerable. sqlite/fakeredis keep tests free of provisioned infra (no service registrations yet).
+- **Consequences:** Queue has no persistence guarantees beyond Redis durability - acceptable for stage 1, revisit (streams/consumer groups) in EPIC-006. Bot deployment is a fourth process. JSON columns use JSONB on Postgres via `with_variant`, so sqlite tests don't exercise JSONB-specific behavior.
+
