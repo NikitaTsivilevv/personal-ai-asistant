@@ -23,13 +23,16 @@ from assistant_shared.schemas import Speaker
 
 from ..events_client import RunClient
 from ..settings import WorkerSettings
-from .agent import AgentConfig, build_system_prompt, disclosure_text
+from .agent import AgentConfig, build_system_prompt, disclosure_text, termination_wrapup
 from .control import ControlRouter
 from .metrics import MetricsCollector
 from .state import CallState, CallStateMachine
+from .termination import TerminationGuard
 from .tools import TOOL_DEFINITIONS, CallToolbox
 
 logger = logging.getLogger(__name__)
+
+_WATCHDOG_POLL_S = 5  # how often the duration watchdog checks the wall-clock cap
 
 
 @dataclass
@@ -459,9 +462,6 @@ async def run_call_pipeline(
             hangup=hangup,
         )
 
-    from .termination import TerminationGuard
-    from .agent import termination_wrapup
-
     guard = TerminationGuard(
         max_duration_s=settings.max_call_duration_s,
         max_turns=settings.max_call_turns,
@@ -495,7 +495,7 @@ async def run_call_pipeline(
 
     async def _duration_watchdog() -> None:
         while True:
-            await asyncio.sleep(5)
+            await asyncio.sleep(_WATCHDOG_POLL_S)
             if guard.duration_exceeded():
                 await _force_terminate()
                 return
