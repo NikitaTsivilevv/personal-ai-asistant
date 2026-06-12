@@ -119,3 +119,25 @@ def test_prompt_includes_role_fewshot_for_es():
     prompt = build_system_prompt(config)
     assert "EXAMPLE" in prompt
     assert "a nombre de" in prompt.lower()
+
+
+def test_prompt_renders_call_facts_block():
+    config = AgentConfig(
+        goal=StructuredGoal(objective="Reservar", call_facts={"имя брони": "Victoria"}),
+    )
+    prompt = build_system_prompt(config)
+    assert "DETAILS FOR THIS CALL" in prompt
+    assert "Victoria" in prompt
+
+
+def test_prompt_omits_call_facts_block_when_empty():
+    config = AgentConfig(goal=StructuredGoal(objective="Reservar"))
+    # The block header (with parenthetical) must not appear; the fewshot may still
+    # reference "DETAILS FOR THIS CALL" as a concept.
+    assert "DETAILS FOR THIS CALL (state these" not in build_system_prompt(config)
+
+
+def test_role_fewshot_points_to_call_details_not_only_allowed_facts():
+    from assistant_worker.call.agent import ROLE_FEWSHOT
+    for lang in ("es", "en", "ru"):
+        assert "DETAILS FOR THIS CALL" in ROLE_FEWSHOT[lang]

@@ -82,26 +82,26 @@ ROLE_FEWSHOT: dict[str, str] = {
     "es": (
         "EXAMPLE (correct behaviour at the data stage):\n"
         "Callee: ¿A nombre de quién hago la reserva?\n"
-        "You: A nombre de María García.  <- you STATE the name from ALLOWED FACTS; "
-        "you are the caller, you never ask the callee for your own client's data."
-        " (María García is just an illustrative example — always use the actual "
-        "name from ALLOWED FACTS)."
+        "You: A nombre de Victoria.  <- state the booking name from DETAILS FOR THIS CALL "
+        "when present; otherwise the client's name from ALLOWED FACTS. You are the caller; "
+        "you never ask the callee for your own client's data."
+        " (Victoria is just an illustrative example — always use the actual value.)"
     ),
     "en": (
         "EXAMPLE (correct behaviour at the data stage):\n"
         "Callee: And what name should I put the booking under?\n"
-        "You: Under María García.  <- you STATE the name from ALLOWED FACTS; you are the "
-        "caller, you never ask the callee for your own client's data."
-        " (María García is just an illustrative example — always use the actual "
-        "name from ALLOWED FACTS)."
+        "You: Under Victoria.  <- state the booking name from DETAILS FOR THIS CALL "
+        "when present; otherwise the client's name from ALLOWED FACTS. You are the caller; "
+        "you never ask the callee for your own client's data."
+        " (Victoria is just an illustrative example — always use the actual value.)"
     ),
     "ru": (
         "EXAMPLE (correct behaviour at the data stage):\n"
         "Callee: На чьё имя оформляем запись?\n"
-        "You: На имя Мария Иванова.  <- you STATE the name from ALLOWED FACTS; you are the "
-        "caller, you never ask the callee for your own client's data."
-        " (Мария Иванова — лишь иллюстративный пример; всегда используйте "
-        "реальное имя из ALLOWED FACTS)."
+        "You: На имя Виктория.  <- state the booking name from DETAILS FOR THIS CALL "
+        "when present; otherwise the client's name from ALLOWED FACTS. You are the caller; "
+        "you never ask the callee for your own client's data."
+        " (Виктория — лишь иллюстративный пример; всегда используйте actual value.)"
     ),
 }
 
@@ -173,6 +173,14 @@ def build_system_prompt(config: AgentConfig) -> str:
             f"- {w}" for w in config.whispers
         )
 
+    call_facts_block = ""
+    if goal.call_facts:
+        rendered = "\n".join(f"- {k}: {v}" for k, v in goal.call_facts.items())
+        call_facts_block = (
+            "\n\nDETAILS FOR THIS CALL (state these to the callee as needed; they are "
+            "the data for this specific call):\n" + rendered
+        )
+
     return (
         _POLICY_PREAMBLE.format(language_name=_LANGUAGE_NAMES[config.language])
         + "\n\nOBJECTIVE:\n"
@@ -188,6 +196,7 @@ def build_system_prompt(config: AgentConfig) -> str:
             if config.target_name
             else ""
         )
+        + call_facts_block
         + "\n\nCONSTRAINTS:\n"
         + constraints_block
         + "\n\nALLOWED FACTS:\n"
