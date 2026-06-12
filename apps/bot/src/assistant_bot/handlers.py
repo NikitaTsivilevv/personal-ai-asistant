@@ -15,7 +15,7 @@ from aiogram.types import (
     Message,
 )
 
-from assistant_shared.schemas import StructuredGoal
+from assistant_shared.schemas import SCENARIOS, StructuredGoal
 
 from .api_client import ApiClient
 from .normalize import NormalizedTask, normalize_instruction
@@ -95,8 +95,42 @@ def _goal_summary(n: NormalizedTask) -> str:
         f"📋 Ограничения:\n{constraints}\n"
         f"🔓 Можно сообщать:\n{facts}\n"
         f"🤖 Автономность: {n.autonomy_level}/3\n"
+        f"🧭 Сценарий: {n.scenario}\n"
         f"📞 Телефон: {n.target_phone or 'не указан'}\n"
         f"🏢 Кому: {n.target_name or 'не указано'}"
+    )
+
+
+def _confirm_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Создать и запустить", callback_data="task:confirm"),
+                InlineKeyboardButton(text="✏️ Переписать", callback_data="task:edit"),
+            ],
+            [
+                InlineKeyboardButton(text="🧭 Сменить сценарий", callback_data="task:scenario"),
+                InlineKeyboardButton(text="🚫 Отмена", callback_data="task:cancel"),
+            ],
+        ]
+    )
+
+
+def _scenario_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=s, callback_data=f"scenario:{s}")] for s in SCENARIOS
+        ]
+    )
+
+
+def _to_structured_goal(n: NormalizedTask) -> StructuredGoal:
+    return StructuredGoal(
+        objective=n.objective,
+        constraints=n.constraints,
+        allowed_facts=n.allowed_facts,
+        autonomy_level=n.autonomy_level,
+        scenario=n.scenario,
     )
 
 
@@ -216,15 +250,7 @@ async def receive_instruction(
     normalized = await normalize_instruction(message.text, settings)
     await state.update_data(instructions=message.text, normalized=normalized.model_dump())
     await state.set_state(NewTask.confirming)
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="✅ Создать и запустить", callback_data="task:confirm"),
-                InlineKeyboardButton(text="✏️ Переписать", callback_data="task:edit"),
-            ],
-            [InlineKeyboardButton(text="🚫 Отмена", callback_data="task:cancel")],
-        ]
-    )
+    keyboard = _confirm_keyboard()
     await message.answer(
         "Вот как я понял задачу:\n\n" + _goal_summary(normalized),
         reply_markup=keyboard,
@@ -239,12 +265,7 @@ async def confirm_task(callback: CallbackQuery, state: FSMContext, api: ApiClien
     task = await api.create_task(
         title=normalized.title,
         instructions=data["instructions"],
-        structured_goal=StructuredGoal(
-            objective=normalized.objective,
-            constraints=normalized.constraints,
-            allowed_facts=normalized.allowed_facts,
-            autonomy_level=normalized.autonomy_level,
-        ),
+        structured_goal=_to_structured_goal(normalized),
         target_phone=normalized.target_phone,
         target_name=normalized.target_name,
     )
@@ -271,6 +292,33 @@ async def cancel_new_task(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.message.edit_reply_markup(reply_markup=None)
         await callback.message.answer("Отменено.")
     await callback.answer()
+
+
+@router.callback_query(NewTask.confirming, F.data == "task:scenario")
+async def choose_scenario(callback: CallbackQuery) -> None:
+    if isinstance(callback.message, Message):
+        await callback.message.answer("Выбери сценарий звонка:", reply_markup=_scenario_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(NewTask.confirming, F.data.startswith("scenario:"))
+async def set_scenario(callback: CallbackQuery, state: FSMContext) -> None:
+    assert callback.data is not None
+    scenario = callback.data.removeprefix("scenario:")
+    if scenario not in SCENARIOS:
+        await callback.answer("Неизвестный сценарий", show_alert=True)
+        return
+    data = await state.get_data()
+    normalized = NormalizedTask.model_validate(data["normalized"])
+    normalized.scenario = scenario
+    await state.update_data(normalized=normalized.model_dump())
+    if isinstance(callback.message, Message):
+        await callback.message.answer(
+            "Обновил:\n\n" + _goal_summary(normalized),
+            reply_markup=_confirm_keyboard(),
+            parse_mode="HTML",
+        )
+    await callback.answer(f"Сценарий: {scenario}")
 
 
 @router.callback_query(F.data.startswith("approval:"))

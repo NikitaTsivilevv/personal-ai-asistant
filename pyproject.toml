@@ -16,6 +16,7 @@ members = [
     "packages/shared",
     "packages/database",
     "packages/policy",
+    "packages/evals",
 ]
 
 [dependency-groups]

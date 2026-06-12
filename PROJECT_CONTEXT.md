@@ -1,7 +1,7 @@
 # PROJECT_CONTEXT.md - Personal AI Assistant
 
-**Last refreshed:** 2026-06-11 (assessment + closeout session)
-**Status:** PRs #1-#8 merged to `main`. The two live-call quality bugs are **fixed in code (PR #7), awaiting live validation**: turn detection (root cause: `vad_analyzer=` was a silent no-op on `FastAPIWebsocketParams` in pipecat 1.3 - VAD is now tuned and wired onto the user aggregator, plus `LocalSmartTurnAnalyzerV3`) and haiku role drift (language-aware few-shot; offline A/B in `scripts/eval_role_drift.py` shows haiku holds the caller role 3/3, so D-11 stays on `claude-haiku-4-5`). A session-end code assessment produced D-12 (next workstream) and surfaced that **the scenario system is built but not wired into intake** (`normalize.py` never sets `structured_goal.scenario`, so everything runs the `generic` policy profile). The dev stand stayed fragile: api+bot were found dead this session ("bot not reacting") and hand-restarted; they currently run in the closeout session's background, not under a supervisor. No phone available at closeout, so live work is deferred.
+**Last refreshed:** 2026-06-12 (scenario routing + eval harness branch)
+**Status:** PRs #1-#8 merged to `main`; branch `feature/scenario-routing-eval-harness` carries D-12 (a)+(b) work (Tasks 1-13, all reviewed). **D-12 (a) DONE:** scenario routing live end-to-end — `SCENARIOS` constant consistency-tested, `normalize.py` extracts `scenario` (unknown → generic), bot confirm card shows scenario with one-tap correction. **D-12 (b) DONE:** eval harness (`packages/evals`) shipped and validated against real models — 6 case YAML cards across 5 scenarios, full Pipecat pipeline with text edges, LLM callee simulator, scripted approvals over the real control list, hybrid scoring, CLI with cost cap, JSON artifacts. Live smoke (haiku agent + judge=sonnet): `doctor/role_drift_probe` 3/3 — D-11 A/B caveat (tool-free, single-turn) now closed. `scripts/eval_role_drift.py` retired (absorbed into harness). See D-13. Turn detection + role drift fixes still awaiting live-call validation (phone needed). Dev stand fragility and supervisor work still pending (D-12 c).
 
 ## Current Goal
 
@@ -9,11 +9,11 @@ An AI assistant that performs phone-based personal/admin tasks with live user co
 
 ## Current Decisions
 
-See `DECISIONS.md` for the authoritative log. Most recent: D-10 (policy engine v1), D-11 (claude-haiku-4-5 conversation LLM; A/B follow-up keeps it), **D-12 (next workstream: eval-driven development, scenario-routing wiring, reliability before scale)**.
+See `DECISIONS.md` for the authoritative log. Most recent: D-11 (claude-haiku-4-5 conversation LLM), D-12 (eval-driven development, scenario-routing wiring, reliability before scale), **D-13 (scenario routing wired into intake; eval harness architecture; eval_role_drift retired)**.
 
 ## Tech Status
 
-Core stack accepted 2026-06-11 (D-5..D-9): Pipecat voice worker (Twilio + Deepgram + swappable LLM + Cartesia), FastAPI api, aiogram bot (separate process), minimal Next.js web, Postgres (Neon), Upstash Redis, uv workspace. Policy engine v1 (`packages/policy`) is rules-as-data with a code hard floor and autonomy levels 0-3. 90 tests pass; ruff clean.
+Core stack accepted 2026-06-11 (D-5..D-9): Pipecat voice worker (Twilio + Deepgram + swappable LLM + Cartesia), FastAPI api, aiogram bot (separate process), minimal Next.js web, Postgres (Neon), Upstash Redis, uv workspace. Policy engine v1 (`packages/policy`) is rules-as-data with a code hard floor and autonomy levels 0-3. Eval harness (`packages/evals`) added with 6 case cards across 5 scenarios. 136 tests pass; ruff clean.
 
 ## How To Resume
 
@@ -21,20 +21,19 @@ For the next session, read:
 
 1. `AGENTS.md`
 2. This file
-3. `DECISIONS.md` (focus D-10, D-11, **D-12**)
-4. `docs/superpowers/handovers/HANDOVER-2026-06-11-assessment-and-roadmap.md`
-5. The relevant epic: `docs/epics/EPIC-002-outbound-calls.md` and `EPIC-003-policy-approvals.md`
+3. `DECISIONS.md` (focus D-11, D-12, **D-13**)
+4. The relevant epic: `docs/epics/EPIC-002-outbound-calls.md` and `EPIC-003-policy-approvals.md`
 
-## Immediate Next Steps (D-12 order: offline-doable first, no phone needed)
+## Immediate Next Steps
 
-1. **Wire scenario detection into intake** so the existing policy profiles + scenario-scoped facts activate: `normalize.py` extracts `scenario`, `handlers.confirm_task` passes it into `StructuredGoal`. Small, high-value, unblocks dormant infrastructure.
-2. **Build an offline eval harness with an LLM "callee simulator"** across the five scenarios (generic/doctor/insurance/restaurant/info_gathering), asserting task success, policy correctness, role-holding, latency, cost. Generalises `scripts/eval_role_drift.py`. Highest-leverage best-practice move; makes every prompt/model/scenario change measurable.
-3. **Reliability:** process supervision + reconnect for api/bot (the fragility hit this session); plan a move off the Cloudflare quick tunnel.
-4. **Generalise/scenario-ise the booking-flavoured few-shot** once eval can measure the trade-off.
-5. **(needs a phone)** live validation of turn detection + role-holding in full multi-turn context; then EPIC-003 phase D scenarios, EPIC-002 D1 real booking, EPIC-003 C2 (Transfer-to-me) / C3 (Take-over).
+1. **Reliability/supervision** (D-12 c): process supervision + reconnect for api/bot; plan a move off the Cloudflare quick tunnel.
+2. **Few-shot generalisation now measurable** (D-12 d): generalise/scenario-ise the booking-flavoured few-shot using the harness; investigate haiku `end_call`/`propose_summary` omission (dominant reliability gap found in smoke run).
+3. **Case-design follow-ups + fact_key gap**: confirm multi-run behavior of `insurance/cancel_denied` and `generic/approval_expiry` conservative-refusal false-fail before retuning; fix `tools.py` `ActionRequest` missing `fact_key` (fact-access deny branch unreachable from worker in production).
+4. **(needs a phone)** live validation of turn detection + role-holding in full multi-turn context; then EPIC-003 phase D scenarios, EPIC-002 D1 real booking, EPIC-003 C2 (Transfer-to-me) / C3 (Take-over).
 
 ## Operational Notes
 
 - Run the stack locally: `uv run assistant-api`, `uv run assistant-bot`, `uv run assistant-worker` (worker also needs the Cloudflare tunnel + Twilio for real calls). Only ONE Telegram poller at a time (a second `assistant-bot` causes Telegram 409 and "not reacting").
+- Run evals: `uv run python -m assistant_evals run --scenario doctor --runs 3` (from repo root). Results in `evals-results/` (gitignored).
 - `.env` (not in git) holds tokens; `LLM_BASE_URL=https://api.anthropic.com/v1/`, `LLM_MODEL=claude-haiku-4-5`. Local process/tunnel logs match `*-session.log` (gitignored).
-- Validation: `uv run pytest -q` (90), `uv run ruff check .`.
+- Validation: `uv run pytest -q` (136), `uv run ruff check .`.
