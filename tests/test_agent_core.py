@@ -127,7 +127,7 @@ def test_prompt_renders_call_facts_block():
     )
     prompt = build_system_prompt(config)
     assert "DETAILS FOR THIS CALL" in prompt
-    assert "Victoria" in prompt
+    assert "имя брони: Victoria" in prompt
 
 
 def test_prompt_omits_call_facts_block_when_empty():
