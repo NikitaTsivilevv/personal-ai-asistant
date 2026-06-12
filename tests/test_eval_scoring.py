@@ -111,6 +111,19 @@ def test_score_success_requires_clean_termination():
     assert not result.passed
 
 
+def test_score_success_over_claim_fails_when_case_expects_less():
+    """Agent reports 'achieved' but case expects 'partially_achieved' and judge says
+    success=true → must FAIL with 'over-claimed' in details."""
+    judge = FakeChat(['{"success": true, "reason": "task done"}'])
+    result = asyncio.run(
+        score_success(_case(expected_end_outcome="partially_achieved"),
+                      end_outcome="achieved", summary="Done",
+                      transcript=[], judge=judge)
+    )
+    assert not result.passed
+    assert "over-claimed" in result.details
+
+
 def test_score_cost_sums_models():
     result = score_cost({"claude-haiku-4-5": (1000, 500)})
     assert result.passed

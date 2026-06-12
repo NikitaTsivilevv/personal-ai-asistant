@@ -44,7 +44,10 @@ class EvalCase(BaseModel):
     client_script: list[ClientScriptItem] = Field(default_factory=list)
     expected_policy: list[PolicyExpect] = Field(default_factory=list)
     forbid_unexpected_policy: bool = False
-    expected_end_outcome: str | None = None  # end_call outcome enum value
+    # Judge hint + over-claim guard: 'achieved' from the agent fails when this expects
+    # less; otherwise the exact enum value is NOT hard-matched (the judge is
+    # authoritative on success). None disables the clean-termination expectation.
+    expected_end_outcome: str | None = None
     forbidden_markers: list[str] = Field(default_factory=list)  # role-drift asks etc.
     judge_criteria: str = ""  # extra instruction for the success judge
     max_turns: int = 12

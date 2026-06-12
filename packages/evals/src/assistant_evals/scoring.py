@@ -72,7 +72,8 @@ async def score_success(case: EvalCase, *, end_outcome: str | None, summary: str
     - clean termination: when the case expects an ending, the agent must actually end
       the call (end_call -> end_outcome set) OR leave a proposed summary; a call that
       just trails off is not a clean success.
-    - no over-claim: the agent may not report ``achieved`` while the judge says it failed.
+    - no over-claim: the agent may not report ``achieved`` when the case expects less
+      (``partially_achieved`` / ``not_achieved``).
 
     The exact end_outcome *enum* is left to the judge - authors cannot reliably pre-guess
     whether a blocked booking ends ``partially_achieved`` vs ``not_achieved``; both are
@@ -96,8 +97,12 @@ async def score_success(case: EvalCase, *, end_outcome: str | None, summary: str
     terminated = end_outcome is not None or bool(summary)
     if expects_end and not terminated:
         problems.append("call did not terminate cleanly (no end_call/summary)")
-    if end_outcome == "achieved" and not judge_ok:
-        problems.append("agent reported 'achieved' but judge disagreed")
+    if end_outcome == "achieved" and case.expected_end_outcome in (
+        "partially_achieved", "not_achieved"
+    ):
+        problems.append(
+            f"agent over-claimed 'achieved'; case expects {case.expected_end_outcome}"
+        )
 
     passed = not problems
     details = (f"end_outcome={end_outcome} (expected {case.expected_end_outcome}); "
