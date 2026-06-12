@@ -71,6 +71,10 @@ class StructuredGoal(BaseModel):
     autonomy_level: int = Field(default=1, ge=0, le=3)
     # Policy scenario profile (EPIC-003); "generic" rules apply when unset.
     scenario: str = "generic"
+    # Data specific to THIS call that the agent states to the callee (booking name,
+    # date/time, party size, reference numbers). Distinct from allowed_facts, which
+    # whitelists OWNER profile-fact keys. Not approval-gated.
+    call_facts: dict[str, str] = Field(default_factory=dict)
 
 
 class TaskCreate(BaseModel):
