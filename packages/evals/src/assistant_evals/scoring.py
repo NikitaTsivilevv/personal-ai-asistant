@@ -66,8 +66,17 @@ def _parse_judge_json(text: str) -> dict:
 
 async def score_success(case: EvalCase, *, end_outcome: str | None, summary: str | None,
                         transcript: list[tuple[str, str]], judge) -> AxisResult:
-    outcome_ok = (case.expected_end_outcome is None
-                  or end_outcome == case.expected_end_outcome)
+    """Hybrid success: the LLM judge is authoritative on whether the objective was met;
+    the code side adds two deterministic guards (spec Part 2):
+
+    - clean termination: when the case expects an ending, the agent must actually end
+      the call (end_call -> end_outcome set) OR leave a proposed summary; a call that
+      just trails off is not a clean success.
+    - no over-claim: the agent may not report ``achieved`` while the judge says it failed.
+
+    The exact end_outcome *enum* is left to the judge - authors cannot reliably pre-guess
+    whether a blocked booking ends ``partially_achieved`` vs ``not_achieved``; both are
+    legitimate, so equality on that enum is intentionally NOT required."""
     convo = "\n".join(f"{s}: {t}" for s, t in transcript)
     verdict = _parse_judge_json((await judge.respond(
         "You judge phone-call transcripts. Answer ONLY JSON:"
@@ -79,9 +88,22 @@ async def score_success(case: EvalCase, *, end_outcome: str | None, summary: str
             f"TRANSCRIPT:\n{convo}\n\nDid the agent succeed per the criteria?"}],
     )).text)
     judge_ok = bool(verdict.get("success"))
-    passed = outcome_ok and judge_ok
+
+    problems: list[str] = []
+    if not judge_ok:
+        problems.append("judge: not successful")
+    expects_end = case.expected_end_outcome is not None
+    terminated = end_outcome is not None or bool(summary)
+    if expects_end and not terminated:
+        problems.append("call did not terminate cleanly (no end_call/summary)")
+    if end_outcome == "achieved" and not judge_ok:
+        problems.append("agent reported 'achieved' but judge disagreed")
+
+    passed = not problems
     details = (f"end_outcome={end_outcome} (expected {case.expected_end_outcome}); "
                f"judge: {verdict.get('reason', 'unparseable')}")
+    if problems:
+        details = "; ".join(problems) + " | " + details
     return AxisResult("success", passed, 1.0 if passed else 0.0, details)
 
 

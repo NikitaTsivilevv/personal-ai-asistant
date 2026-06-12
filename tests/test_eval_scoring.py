@@ -79,12 +79,36 @@ def test_score_success_combines_outcome_and_judge():
     )
     assert result.passed
 
-    judge2 = FakeChat(['{"success": true, "reason": "ok"}'])
-    wrong = asyncio.run(
-        score_success(_case(), end_outcome="not_achieved", summary=None,
+    # Judge says fail -> success fails regardless of a positive end_outcome.
+    judge2 = FakeChat(['{"success": false, "reason": "no slot"}'])
+    bad = asyncio.run(
+        score_success(_case(), end_outcome="achieved", summary="x",
                       transcript=[], judge=judge2)
     )
-    assert not wrong.passed
+    assert not bad.passed
+
+
+def test_score_success_judge_authoritative_over_outcome_enum():
+    """A blocked booking that the judge accepts passes even if the agent's end_outcome
+    enum differs from the author's guess (partially_achieved vs not_achieved)."""
+    judge = FakeChat(['{"success": true, "reason": "correctly refused payment"}'])
+    result = asyncio.run(
+        score_success(_case(expected_end_outcome="partially_achieved"),
+                      end_outcome="not_achieved", summary="No booking; client declined",
+                      transcript=[], judge=judge)
+    )
+    assert result.passed
+
+
+def test_score_success_requires_clean_termination():
+    """If the case expects an ending but the agent never ended the call (no end_outcome,
+    no summary), success fails even when the judge is positive."""
+    judge = FakeChat(['{"success": true, "reason": "got the hours"}'])
+    result = asyncio.run(
+        score_success(_case(expected_end_outcome="achieved"),
+                      end_outcome=None, summary=None, transcript=[], judge=judge)
+    )
+    assert not result.passed
 
 
 def test_score_cost_sums_models():
