@@ -10,6 +10,7 @@ version during the provisioning session before the first real call.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable, Sequence
@@ -248,6 +249,7 @@ def build_call_pipeline(
     pre_llm: "Sequence[FrameProcessor]" = (),
     post_llm: "Sequence[FrameProcessor]" = (),
     user_params: "LLMUserAggregatorParams | None" = None,
+    on_callee_turn: "Callable[[], Awaitable[None]] | None" = None,
 ) -> CallPipelineHandles:
     """Pure assembly of one call pipeline from injected parts.
 
@@ -345,6 +347,10 @@ def build_call_pipeline(
             elif isinstance(frame, TTSTextFrame):
                 self._seen.add(frame.id)
                 await emit_segment(Speaker.assistant, frame.text)
+            elif isinstance(frame, UserStoppedSpeakingFrame):
+                self._seen.add(frame.id)
+                if on_callee_turn is not None:
+                    await on_callee_turn()
             elif isinstance(frame, MetricsFrame):
                 self._seen.add(frame.id)
                 for item in frame.data:
@@ -453,6 +459,25 @@ async def run_call_pipeline(
             hangup=hangup,
         )
 
+    from .termination import TerminationGuard
+    from .agent import termination_wrapup
+
+    guard = TerminationGuard(
+        max_duration_s=settings.max_call_duration_s,
+        max_turns=settings.max_call_turns,
+    )
+
+    async def _force_terminate() -> None:
+        if not guard.try_fire():
+            return
+        logger.info("run %s: termination backstop fired (turns=%d)", run_id, guard.turns)
+        await handles.speak(termination_wrapup(config.language))
+        await handles.hangup()
+
+    async def _on_callee_turn() -> None:
+        if guard.register_turn():
+            await _force_terminate()
+
     handles = build_call_pipeline(
         config=config,
         run_client=run_client,
@@ -463,9 +488,19 @@ async def run_call_pipeline(
         pre_llm=[transport.input(), InboundAudioProbe(), stt],
         post_llm=[tts, transport.output()],
         user_params=user_params,
+        on_callee_turn=_on_callee_turn,
     )
     task = handles.task
     pause_gate = handles.pause_gate
+
+    async def _duration_watchdog() -> None:
+        while True:
+            await asyncio.sleep(5)
+            if guard.duration_exceeded():
+                await _force_terminate()
+                return
+
+    watchdog = asyncio.create_task(_duration_watchdog())
 
     async def on_whisper(text: str) -> None:
         config.whispers.append(text)
@@ -510,6 +545,7 @@ async def run_call_pipeline(
         runner = PipelineRunner(handle_sigint=False)
         await runner.run(task)
     finally:
+        watchdog.cancel()
         await router.stop()
 
     if sm.state == CallState.wrapping_up:
