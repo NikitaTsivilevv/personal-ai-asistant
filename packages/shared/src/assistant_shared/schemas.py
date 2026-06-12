@@ -56,6 +56,12 @@ class Speaker(str, enum.Enum):
     system = "system"
 
 
+# Policy scenario profiles. Must match the rule files shipped in
+# assistant_policy/rules/ (asserted by tests/test_scenarios_shared.py).
+# "generic" is the conservative fallback for unknown/unsure classification.
+SCENARIOS: tuple[str, ...] = ("generic", "doctor", "insurance", "restaurant", "info_gathering")
+
+
 class StructuredGoal(BaseModel):
     """LLM-normalized task goal (TZ section 3)."""
 
