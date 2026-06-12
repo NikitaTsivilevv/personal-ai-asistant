@@ -155,3 +155,19 @@ def test_to_structured_goal_passes_scenario():
     goal = _to_structured_goal(NormalizedTask(objective="x", scenario="insurance"))
     assert goal.scenario == "insurance"
     assert goal.objective == "x"
+
+
+def test_to_structured_goal_passes_call_facts():
+    from assistant_bot.handlers import _to_structured_goal
+    from assistant_bot.normalize import NormalizedTask
+
+    n = NormalizedTask(objective="Reservar", call_facts={"имя брони": "Victoria"})
+    assert _to_structured_goal(n).call_facts == {"имя брони": "Victoria"}
+
+
+def test_goal_summary_shows_call_facts():
+    from assistant_bot.handlers import _goal_summary
+    from assistant_bot.normalize import NormalizedTask
+
+    n = NormalizedTask(objective="Reservar", call_facts={"имя брони": "Victoria"})
+    assert "Victoria" in _goal_summary(n)

@@ -89,11 +89,13 @@ def _is_allowed(settings: BotSettings, user_id: int | None) -> bool:
 def _goal_summary(n: NormalizedTask) -> str:
     constraints = "\n".join(f"  • {c}" for c in n.constraints) or "  —"
     facts = "\n".join(f"  • {f}" for f in n.allowed_facts) or "  —"
+    call_facts = "\n".join(f"  • {k}: {v}" for k, v in n.call_facts.items()) or "  —"
     return (
         f"<b>{n.title}</b>\n\n"
         f"🎯 Цель: {n.objective}\n"
         f"📋 Ограничения:\n{constraints}\n"
         f"🔓 Можно сообщать:\n{facts}\n"
+        f"🗂 Данные для звонка:\n{call_facts}\n"
         f"🤖 Автономность: {n.autonomy_level}/3\n"
         f"🧭 Сценарий: {n.scenario}\n"
         f"📞 Телефон: {n.target_phone or 'не указан'}\n"
@@ -131,6 +133,7 @@ def _to_structured_goal(n: NormalizedTask) -> StructuredGoal:
         allowed_facts=n.allowed_facts,
         autonomy_level=n.autonomy_level,
         scenario=n.scenario,
+        call_facts=n.call_facts,
     )
 
 
