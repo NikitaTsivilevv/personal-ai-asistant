@@ -37,7 +37,12 @@ from pipecat.utils.time import time_now_iso8601
 
 
 class AssistantOutputCapture(FrameProcessor):
-    """Collects agent text output; turn_done fires when a reply is complete."""
+    """Collects agent text output; turn_done fires when a reply is complete.
+
+    Warning: turn_done also fires on every TTSSpeakFrame (filler/disclosure/wrap-up);
+    a driver must expect spurious wakes during approval flows and re-check completion
+    (e.g. via the call state machine) before treating the turn as finished.
+    """
 
     def __init__(self) -> None:
         super().__init__()
