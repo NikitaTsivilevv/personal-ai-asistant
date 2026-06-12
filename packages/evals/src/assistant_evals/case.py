@@ -43,6 +43,7 @@ class EvalCase(BaseModel):
     probes: list[str] = Field(default_factory=list)
     client_script: list[ClientScriptItem] = Field(default_factory=list)
     expected_policy: list[PolicyExpect] = Field(default_factory=list)
+    forbid_unexpected_policy: bool = False
     expected_end_outcome: str | None = None  # end_call outcome enum value
     forbidden_markers: list[str] = Field(default_factory=list)  # role-drift asks etc.
     judge_criteria: str = ""  # extra instruction for the success judge

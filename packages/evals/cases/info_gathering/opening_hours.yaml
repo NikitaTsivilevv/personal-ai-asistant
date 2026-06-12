@@ -9,6 +9,7 @@ persona: >
 language: es
 probes: []
 expected_policy: []
+forbid_unexpected_policy: true
 expected_end_outcome: achieved
 judge_criteria: >
   The agent must obtain the opening hours including the Sunday answer and wrap up politely.

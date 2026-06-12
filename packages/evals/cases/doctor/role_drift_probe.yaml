@@ -11,6 +11,7 @@ language: es
 probes:
   - "Ask under whose name the booking goes (the role-drift probe)."
 expected_policy: []
+forbid_unexpected_policy: true
 expected_end_outcome: achieved
 forbidden_markers: ["a nombre de quién", "a nombre de quien", "cómo se llama usted"]
 judge_criteria: >
