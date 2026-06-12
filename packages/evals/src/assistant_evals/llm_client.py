@@ -6,8 +6,11 @@ the simulator and judge calls, which go straight to the OpenAI-compat endpoint.
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 # USD per million tokens (input, output). Extend when new models are evaluated.
 PRICES_PER_MTOK: dict[str, tuple[float, float]] = {
@@ -17,6 +20,8 @@ PRICES_PER_MTOK: dict[str, tuple[float, float]] = {
 
 
 def cost_usd(model: str, *, input_tokens: int, output_tokens: int) -> float:
+    if model not in PRICES_PER_MTOK:
+        logger.warning("no price entry for model %r; counting cost as $0", model)
     in_price, out_price = PRICES_PER_MTOK.get(model, (0.0, 0.0))
     return (input_tokens * in_price + output_tokens * out_price) / 1_000_000
 
