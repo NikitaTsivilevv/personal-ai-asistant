@@ -44,9 +44,11 @@ Track unresolved product, architecture, provider, compliance, and UX questions.
 
 ## Evaluation And Scenario Routing
 
-- How should the task scenario be detected at intake so the policy profiles activate: an LLM-extracted enum in `normalize.py`, a keyword heuristic, or an explicit user pick - and what is the fallback when ambiguous? (Today `scenario` is never set, so everything runs `generic`; see D-12.)
-- Offline eval harness: how faithful must the LLM "callee simulator" be (tool-free single-turn vs full pipeline with tools/multi-turn), and which metrics gate a change (task success, policy correctness, role-holding, latency, cost)?
-- Should the caller-role few-shot stay generic/booking-flavoured or become scenario-specific once eval can measure the trade-off?
+- ~~How should the task scenario be detected at intake so the policy profiles activate?~~ Resolved 2026-06-12 (D-13, PR #10): LLM-extracted enum in `normalize.py` (unknown → `generic` + warning) with a confirm-card display and one-tap correction in the bot.
+- ~~Offline eval harness: how faithful must the LLM "callee simulator" be, and which metrics gate a change?~~ Resolved 2026-06-12 (D-13, PR #10): full Pipecat pipeline with tools/multi-turn (text edges only); the deterministic policy axis gates (non-zero exit), success/role use an LLM judge, latency/cost informational.
+- Should the caller-role few-shot stay generic/booking-flavoured or become scenario-specific now that the eval harness can measure the trade-off? (D-12 d)
+- How to make haiku reliably terminate calls (`end_call`/`propose_summary` omission was the dominant gap in the 2026-06-12 smoke run): prompt change, a termination nudge in the pipeline, or a model-floor change (feeds D-11)?
+- Case design for conservative refusal: `insurance/cancel_denied` and `generic/approval_expiry` expect the agent to *attempt* the gated action; an agent that refuses verbally never triggers the policy engine and fails "missing expected decision". Retune the cases or the policy-axis semantics? (Needs multi-run confirmation first.)
 
 ## Commercialization And Compliance
 
