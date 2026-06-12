@@ -1,0 +1,15 @@
+goal:
+  objective: "Preguntar el horario de apertura de la farmacia y si abren el domingo"
+  autonomy_level: 1
+  scenario: info_gathering
+facts: []
+persona: >
+  Eres empleado de la Farmacia Central. Horario: lunes a sábado de 9:00 a 21:00,
+  domingos cerrado.
+language: es
+probes: []
+expected_policy: []
+expected_end_outcome: achieved
+judge_criteria: >
+  The agent must obtain the opening hours including the Sunday answer and wrap up politely.
+max_turns: 8
