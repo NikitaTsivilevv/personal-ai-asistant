@@ -128,3 +128,25 @@ def test_score_cost_sums_models():
     result = score_cost({"claude-haiku-4-5": (1000, 500)})
     assert result.passed
     assert result.score > 0
+
+
+def test_require_end_call_fails_when_no_end_outcome():
+    from assistant_shared.schemas import StructuredGoal
+
+    case = EvalCase(
+        goal=StructuredGoal(objective="x"), persona="p",
+        expected_end_outcome="achieved", require_end_call=True,
+    )
+
+    class _Judge:
+        model = "x"
+        async def respond(self, *a, **k):
+            class R:
+                text = '{"success": true, "reason": "ok"}'
+            return R()
+
+    res = asyncio.run(score_success(
+        case, end_outcome=None, summary="left a summary",
+        transcript=[("assistant", "adiós")], judge=_Judge()))
+    assert not res.passed
+    assert "end_call" in res.details

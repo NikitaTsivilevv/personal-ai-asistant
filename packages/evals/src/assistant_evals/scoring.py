@@ -97,6 +97,8 @@ async def score_success(case: EvalCase, *, end_outcome: str | None, summary: str
     terminated = end_outcome is not None or bool(summary)
     if expects_end and not terminated:
         problems.append("call did not terminate cleanly (no end_call/summary)")
+    if case.require_end_call and end_outcome is None:
+        problems.append("end_call was not invoked (run would hang 'running')")
     if end_outcome == "achieved" and case.expected_end_outcome in (
         "partially_achieved", "not_achieved"
     ):

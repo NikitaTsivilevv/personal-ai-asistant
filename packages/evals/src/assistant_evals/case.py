@@ -48,6 +48,7 @@ class EvalCase(BaseModel):
     # less; otherwise the exact enum value is NOT hard-matched (the judge is
     # authoritative on success). None disables the clean-termination expectation.
     expected_end_outcome: str | None = None
+    require_end_call: bool = False  # strict: end_call must have been invoked (end_outcome set)
     forbidden_markers: list[str] = Field(default_factory=list)  # role-drift asks etc.
     judge_criteria: str = ""  # extra instruction for the success judge
     max_turns: int = 12
