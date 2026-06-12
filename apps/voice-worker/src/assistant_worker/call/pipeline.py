@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass
 
 import redis.asyncio as aioredis
 from fastapi import WebSocket
@@ -27,6 +29,19 @@ from .state import CallState, CallStateMachine
 from .tools import TOOL_DEFINITIONS, CallToolbox
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class CallPipelineHandles:
+    """Everything a caller needs to run and steer one assembled call pipeline."""
+
+    task: "PipelineTask"
+    toolbox: CallToolbox
+    pause_gate: "PauseGate"
+    speak: Callable[[str], Awaitable[None]]
+    hangup: Callable[[], Awaitable[None]]
+    transcript_log: list[str]
+
 
 try:  # heavy optional deps
     from pipecat.adapters.schemas.function_schema import FunctionSchema
@@ -220,103 +235,50 @@ def _tool_schemas() -> "ToolsSchema":
     )
 
 
-async def run_call_pipeline(
+def build_call_pipeline(
     *,
-    websocket: WebSocket,
-    stream_info: dict,
     config: AgentConfig,
     run_client: RunClient,
-    redis: aioredis.Redis,
-    settings: WorkerSettings,
-    run_id: str,
-) -> tuple[CallState, CallToolbox, MetricsCollector]:
-    """Run one call to completion. Returns (final_state, toolbox, metrics)."""
+    llm: "OpenAILLMService",
+    sm: CallStateMachine,
+    metrics: MetricsCollector,
+    make_toolbox: Callable[
+        [Callable[[str], Awaitable[None]], Callable[[], Awaitable[None]]], CallToolbox
+    ],
+    pre_llm: "Sequence[FrameProcessor]" = (),
+    post_llm: "Sequence[FrameProcessor]" = (),
+    user_params: "LLMUserAggregatorParams | None" = None,
+) -> CallPipelineHandles:
+    """Pure assembly of one call pipeline from injected parts.
+
+    Knows nothing about Twilio/Deepgram/Cartesia/websockets/settings: the audio
+    (or text) edges arrive via ``pre_llm``/``post_llm`` and the providers via
+    ``llm``/``make_toolbox``. Production audio and the offline text-edge eval
+    harness share this exact aggregator/LLM/tool/policy core.
+    """
     if not PIPECAT_AVAILABLE:
         raise RuntimeError("pipecat is not installed; install the 'call' extra")
 
-    sm = CallStateMachine(state=CallState.dialing)
-    metrics = MetricsCollector()
-    transcript_log: list[str] = []
     seq = 0
-
-    serializer = TwilioFrameSerializer(
-        stream_sid=stream_info["stream_sid"],
-        call_sid=stream_info["call_sid"],
-        account_sid=settings.twilio_account_sid,
-        auth_token=settings.twilio_auth_token,
-    )
-    transport = FastAPIWebsocketTransport(
-        websocket=websocket,
-        # VAD is NOT configured here in pipecat 1.3: TransportParams has no
-        # vad_analyzer field, so the old kwarg was a silent no-op. VAD/turn/
-        # barge-in are wired on the user aggregator below.
-        params=FastAPIWebsocketParams(
-            audio_in_enabled=True,
-            audio_out_enabled=True,
-            add_wav_header=False,
-            serializer=serializer,
-        ),
-    )
-    stt = DeepgramSTTService(
-        api_key=settings.deepgram_api_key,
-        settings=DeepgramSTTService.Settings(language=config.language),
-    )
-    tts = CartesiaTTSService(
-        api_key=settings.cartesia_api_key,
-        voice_id=settings.cartesia_voice_id,
-        params=CartesiaTTSService.InputParams(language=config.language),
-    )
-    llm_kwargs: dict = {"api_key": settings.llm_api_key, "model": settings.llm_model}
-    if settings.llm_base_url:
-        llm_kwargs["base_url"] = settings.llm_base_url
-    llm = OpenAILLMService(**llm_kwargs)
+    transcript_log: list[str] = []
 
     context = LLMContext(
         [{"role": "system", "content": build_system_prompt(config)}],
         tools=_tool_schemas(),
     )
-    # pipecat 1.3 turn-taking wiring (see findings comment near build_vad_analyzer):
-    #   - vad_analyzer attaches here, NOT on the transport
-    #     (llm_response_universal.py:160,649 -> VADController).
-    #   - The default user_turn_strategies.stop is
-    #     TurnAnalyzerUserTurnStopStrategy(LocalSmartTurnAnalyzerV3())
-    #     (user_turn_strategies.py:43-51), so we build the strategy list
-    #     explicitly to honour the VAD-only fallback when no model loads.
-    #   - Barge-in: enable_interruptions defaults True on the (default)
-    #     VADUserTurnStartStrategy (base_user_turn_start_strategy.py:55).
-    turn_analyzer = build_turn_analyzer()
-    if turn_analyzer is not None:
-        stop_strategies = [TurnAnalyzerUserTurnStopStrategy(turn_analyzer=turn_analyzer)]
-    else:
-        # VAD-only fallback: a pure VAD/STT-timeout stop strategy with no ML
-        # model, so we don't re-trigger the smart-turn load that just failed.
-        # NOTE: passing user_turn_strategies=None would let pipecat rebuild the
-        # default LocalSmartTurnAnalyzerV3 (user_turn_strategies.py:43-51),
-        # re-hitting the same load failure — hence the explicit strategy here.
-        stop_strategies = [SpeechTimeoutUserTurnStopStrategy()]
     user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
         context,
-        user_params=LLMUserAggregatorParams(
-            # VAD attach point in 1.3 (llm_response_universal.py:160,649).
-            vad_analyzer=build_vad_analyzer(),
-            # Smart-turn (or VAD-only) stop strategy; start strategies keep
-            # their default VADUserTurnStartStrategy, whose enable_interruptions
-            # default True drives barge-in (base_user_turn_start_strategy.py:55).
-            user_turn_strategies=UserTurnStrategies(stop=stop_strategies),
-        ),
+        user_params=user_params if user_params is not None else LLMUserAggregatorParams(),
     )
 
     pause_gate = PauseGate()
     pipeline = Pipeline(
         [
-            transport.input(),
-            InboundAudioProbe(),
-            stt,
+            *pre_llm,
             pause_gate,
             user_aggregator,
             llm,
-            tts,
-            transport.output(),
+            *post_llm,
             assistant_aggregator,
         ]
     )
@@ -329,39 +291,7 @@ async def run_call_pipeline(
         _safe_transition(sm, CallState.wrapping_up)
         await task.queue_frame(EndFrame())
 
-    toolbox = CallToolbox(
-        config=config,
-        run_client=run_client,
-        redis=redis,
-        run_id=run_id,
-        approval_timeout_s=settings.approval_timeout_s,
-        speak=speak,
-        hangup=hangup_call,
-    )
-
-    async def on_whisper(text: str) -> None:
-        config.whispers.append(text)
-        await task.queue_frame(
-            LLMMessagesAppendFrame(
-                [{"role": "system", "content": f"Live instruction from your client: {text}"}],
-            )
-        )
-
-    async def on_hangup(kind: str) -> None:
-        logger.info("run %s: %s requested from control plane", run_id, kind)
-        await hangup_call()
-
-    async def on_pause(paused: bool) -> None:
-        pause_gate.paused = paused
-        logger.info("run %s: automation %s", run_id, "paused" if paused else "resumed")
-        await run_client.status(
-            sm.run_status, call_state="paused" if paused else sm.state.value
-        )
-
-    router = ControlRouter(
-        redis, run_id, on_whisper=on_whisper, on_hangup=on_hangup, on_pause=on_pause
-    )
-    toolbox.control_router = router
+    toolbox = make_toolbox(speak, hangup_call)
 
     # Tool registration: every handler is wrapped so state transitions happen
     # around approval pauses.
@@ -393,20 +323,6 @@ async def run_call_pipeline(
         role = "assistant" if speaker == Speaker.assistant else "callee"
         transcript_log.append(f"{role}: {text}")
         await run_client.say(seq, speaker, text)
-
-    @transport.event_handler("on_client_connected")
-    async def on_client_connected(transport, client) -> None:
-        _safe_transition(sm, CallState.connected)
-        await run_client.status(sm.run_status, call_state=sm.state.value)
-        _safe_transition(sm, CallState.disclosure)
-        # Mandatory disclosure: spoken via TTS directly, not LLM-generated.
-        await speak(disclosure_text(config.language))
-        _safe_transition(sm, CallState.conversation)
-        await run_client.status(sm.run_status, call_state=sm.state.value)
-
-    @transport.event_handler("on_client_disconnected")
-    async def on_client_disconnected(transport, client) -> None:
-        await task.queue_frame(EndFrame())
 
     class _CallObserver(BaseObserver):
         """Streams transcript segments and collects per-turn latency metrics.
@@ -440,6 +356,156 @@ async def run_call_pipeline(
 
     task.add_observer(_CallObserver())
 
+    return CallPipelineHandles(
+        task=task,
+        toolbox=toolbox,
+        pause_gate=pause_gate,
+        speak=speak,
+        hangup=hangup_call,
+        transcript_log=transcript_log,
+    )
+
+
+async def run_call_pipeline(
+    *,
+    websocket: WebSocket,
+    stream_info: dict,
+    config: AgentConfig,
+    run_client: RunClient,
+    redis: aioredis.Redis,
+    settings: WorkerSettings,
+    run_id: str,
+) -> tuple[CallState, CallToolbox, MetricsCollector]:
+    """Run one call to completion. Returns (final_state, toolbox, metrics)."""
+    if not PIPECAT_AVAILABLE:
+        raise RuntimeError("pipecat is not installed; install the 'call' extra")
+
+    sm = CallStateMachine(state=CallState.dialing)
+    metrics = MetricsCollector()
+
+    serializer = TwilioFrameSerializer(
+        stream_sid=stream_info["stream_sid"],
+        call_sid=stream_info["call_sid"],
+        account_sid=settings.twilio_account_sid,
+        auth_token=settings.twilio_auth_token,
+    )
+    transport = FastAPIWebsocketTransport(
+        websocket=websocket,
+        # VAD is NOT configured here in pipecat 1.3: TransportParams has no
+        # vad_analyzer field, so the old kwarg was a silent no-op. VAD/turn/
+        # barge-in are wired on the user aggregator below.
+        params=FastAPIWebsocketParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
+            add_wav_header=False,
+            serializer=serializer,
+        ),
+    )
+    stt = DeepgramSTTService(
+        api_key=settings.deepgram_api_key,
+        settings=DeepgramSTTService.Settings(language=config.language),
+    )
+    tts = CartesiaTTSService(
+        api_key=settings.cartesia_api_key,
+        voice_id=settings.cartesia_voice_id,
+        params=CartesiaTTSService.InputParams(language=config.language),
+    )
+    llm_kwargs: dict = {"api_key": settings.llm_api_key, "model": settings.llm_model}
+    if settings.llm_base_url:
+        llm_kwargs["base_url"] = settings.llm_base_url
+    llm = OpenAILLMService(**llm_kwargs)
+
+    # pipecat 1.3 turn-taking wiring (see findings comment near build_vad_analyzer):
+    #   - vad_analyzer attaches here, NOT on the transport
+    #     (llm_response_universal.py:160,649 -> VADController).
+    #   - The default user_turn_strategies.stop is
+    #     TurnAnalyzerUserTurnStopStrategy(LocalSmartTurnAnalyzerV3())
+    #     (user_turn_strategies.py:43-51), so we build the strategy list
+    #     explicitly to honour the VAD-only fallback when no model loads.
+    #   - Barge-in: enable_interruptions defaults True on the (default)
+    #     VADUserTurnStartStrategy (base_user_turn_start_strategy.py:55).
+    turn_analyzer = build_turn_analyzer()
+    if turn_analyzer is not None:
+        stop_strategies = [TurnAnalyzerUserTurnStopStrategy(turn_analyzer=turn_analyzer)]
+    else:
+        # VAD-only fallback: a pure VAD/STT-timeout stop strategy with no ML
+        # model, so we don't re-trigger the smart-turn load that just failed.
+        # NOTE: passing user_turn_strategies=None would let pipecat rebuild the
+        # default LocalSmartTurnAnalyzerV3 (user_turn_strategies.py:43-51),
+        # re-hitting the same load failure — hence the explicit strategy here.
+        stop_strategies = [SpeechTimeoutUserTurnStopStrategy()]
+    user_params = LLMUserAggregatorParams(
+        # VAD attach point in 1.3 (llm_response_universal.py:160,649).
+        vad_analyzer=build_vad_analyzer(),
+        # Smart-turn (or VAD-only) stop strategy; start strategies keep
+        # their default VADUserTurnStartStrategy, whose enable_interruptions
+        # default True drives barge-in (base_user_turn_start_strategy.py:55).
+        user_turn_strategies=UserTurnStrategies(stop=stop_strategies),
+    )
+
+    def make_toolbox(speak, hangup) -> CallToolbox:
+        return CallToolbox(
+            config=config,
+            run_client=run_client,
+            redis=redis,
+            run_id=run_id,
+            approval_timeout_s=settings.approval_timeout_s,
+            speak=speak,
+            hangup=hangup,
+        )
+
+    handles = build_call_pipeline(
+        config=config,
+        run_client=run_client,
+        llm=llm,
+        sm=sm,
+        metrics=metrics,
+        make_toolbox=make_toolbox,
+        pre_llm=[transport.input(), InboundAudioProbe(), stt],
+        post_llm=[tts, transport.output()],
+        user_params=user_params,
+    )
+    task = handles.task
+    pause_gate = handles.pause_gate
+
+    async def on_whisper(text: str) -> None:
+        config.whispers.append(text)
+        await task.queue_frame(
+            LLMMessagesAppendFrame(
+                [{"role": "system", "content": f"Live instruction from your client: {text}"}],
+            )
+        )
+
+    async def on_hangup(kind: str) -> None:
+        logger.info("run %s: %s requested from control plane", run_id, kind)
+        await handles.hangup()
+
+    async def on_pause(paused: bool) -> None:
+        pause_gate.paused = paused
+        logger.info("run %s: automation %s", run_id, "paused" if paused else "resumed")
+        await run_client.status(
+            sm.run_status, call_state="paused" if paused else sm.state.value
+        )
+
+    router = ControlRouter(
+        redis, run_id, on_whisper=on_whisper, on_hangup=on_hangup, on_pause=on_pause
+    )
+    handles.toolbox.control_router = router
+
+    @transport.event_handler("on_client_connected")
+    async def on_client_connected(transport, client) -> None:
+        _safe_transition(sm, CallState.connected)
+        await run_client.status(sm.run_status, call_state=sm.state.value)
+        _safe_transition(sm, CallState.disclosure)
+        # Mandatory disclosure: spoken via TTS directly, not LLM-generated.
+        await handles.speak(disclosure_text(config.language))
+        _safe_transition(sm, CallState.conversation)
+        await run_client.status(sm.run_status, call_state=sm.state.value)
+
+    @transport.event_handler("on_client_disconnected")
+    async def on_client_disconnected(transport, client) -> None:
+        await task.queue_frame(EndFrame())
+
     router.start()
     try:
         runner = PipelineRunner(handle_sigint=False)
@@ -454,8 +520,8 @@ async def run_call_pipeline(
         _safe_transition(sm, CallState.wrapping_up)
         _safe_transition(sm, CallState.ended)
 
-    toolbox.transcript_log = transcript_log  # type: ignore[attr-defined]
-    return sm.state, toolbox, metrics
+    handles.toolbox.transcript_log = handles.transcript_log  # type: ignore[attr-defined]
+    return sm.state, handles.toolbox, metrics
 
 
 def _stage_for_processor(processor_name: str) -> str | None:
