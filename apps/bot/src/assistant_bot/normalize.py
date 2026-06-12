@@ -11,7 +11,7 @@ import json
 import logging
 import re
 
-from assistant_shared.schemas import StructuredGoal
+from assistant_shared.schemas import SCENARIOS, StructuredGoal
 
 from .settings import BotSettings
 
@@ -27,10 +27,14 @@ _SYSTEM_PROMPT = """\
   "autonomy_level": 0-3,
   "target_phone": "телефон в международном формате или null",
   "target_name": "название организации/имя или null",
-  "title": "короткий заголовок задачи"
+  "title": "короткий заголовок задачи",
+  "scenario": "generic|doctor|insurance|restaurant|info_gathering"
 }
 autonomy_level: 0 - подтверждать каждое действие, 1 - по умолчанию, 2 - разрешены записи/переносы,
 3 - максимум самостоятельности (платежи всё равно требуют подтверждения).
+scenario: тип звонка. doctor - клиники, врачи, медицинские записи; insurance - страховые компании;
+restaurant - рестораны, бронь столиков; info_gathering - звонок только чтобы узнать информацию;
+generic - всё остальное И ЛЮБОЙ случай, когда не уверен.
 Отвечай ТОЛЬКО валидным JSON без пояснений."""
 
 
@@ -38,6 +42,21 @@ class NormalizedTask(StructuredGoal):
     title: str = "Задача"
     target_phone: str | None = None
     target_name: str | None = None
+
+
+def _coerce_scenario(value: object) -> str:
+    if isinstance(value, str) and value in SCENARIOS:
+        return value
+    if value not in (None, ""):
+        logger.warning("LLM returned unknown scenario %r; falling back to generic", value)
+    return "generic"
+
+
+def _parse_llm_reply(raw: str) -> NormalizedTask:
+    raw = re.sub(r"^```(json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
+    payload = json.loads(raw)
+    payload["scenario"] = _coerce_scenario(payload.get("scenario"))
+    return NormalizedTask.model_validate(payload)
 
 
 async def normalize_instruction(text: str, settings: BotSettings) -> NormalizedTask:
@@ -59,10 +78,7 @@ async def _normalize_llm(text: str, settings: BotSettings) -> NormalizedTask:
         system=_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": text}],
     )
-    raw = response.content[0].text
-    # Strip optional markdown fences before parsing.
-    raw = re.sub(r"^```(json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
-    return NormalizedTask.model_validate(json.loads(raw))
+    return _parse_llm_reply(response.content[0].text)
 
 
 _PHONE_RE = re.compile(r"(\+?\d[\d\s\-()]{7,}\d)")

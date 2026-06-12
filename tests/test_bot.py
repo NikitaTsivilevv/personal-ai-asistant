@@ -77,3 +77,47 @@ def test_parse_fact_add_rejects_garbage():
 
     assert parse_fact_add("просто текст без равно") is None
     assert parse_fact_add("= значение без ключа") is None
+
+
+def test_parse_llm_reply_keeps_valid_scenario():
+    from assistant_bot.normalize import _parse_llm_reply
+
+    raw = (
+        '{"objective": "Записаться к врачу", "constraints": [], "allowed_facts": [],'
+        ' "autonomy_level": 1, "target_phone": null, "target_name": "Clinica",'
+        ' "title": "Врач", "scenario": "doctor"}'
+    )
+    assert _parse_llm_reply(raw).scenario == "doctor"
+
+
+def test_parse_llm_reply_coerces_unknown_scenario_to_generic():
+    from assistant_bot.normalize import _parse_llm_reply
+
+    raw = (
+        '{"objective": "x", "constraints": [], "allowed_facts": [], "autonomy_level": 1,'
+        ' "target_phone": null, "target_name": null, "title": "x", "scenario": "dentist"}'
+    )
+    assert _parse_llm_reply(raw).scenario == "generic"
+
+
+def test_parse_llm_reply_missing_scenario_defaults_generic_and_strips_fences():
+    from assistant_bot.normalize import _parse_llm_reply
+
+    raw = (
+        '```json\n{"objective": "x", "constraints": [], "allowed_facts": [],'
+        ' "autonomy_level": 1, "target_phone": null, "target_name": null, "title": "x"}\n```'
+    )
+    assert _parse_llm_reply(raw).scenario == "generic"
+
+
+def test_heuristic_fallback_scenario_is_generic():
+    n = _normalize_heuristic("Узнай часы работы аптеки")
+    assert n.scenario == "generic"
+
+
+def test_normalize_prompt_mentions_scenario_enum():
+    from assistant_bot.normalize import _SYSTEM_PROMPT
+    from assistant_shared.schemas import SCENARIOS
+
+    for name in SCENARIOS:
+        assert name in _SYSTEM_PROMPT
