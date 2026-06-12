@@ -44,3 +44,10 @@ class WorkerSettings(BaseSettings):
     # Retry policy for busy/no-answer.
     retry_max_attempts: int = 3
     retry_base_delay_s: float = 120.0
+
+    # Deterministic call-termination backstop: a call is force-ended after this
+    # wall-clock duration or this many conversation turns, even if the LLM never
+    # calls end_call (prevents runs hung in 'running'). One "turn" is counted per
+    # completed callee turn (UserStoppedSpeakingFrame) ≈ one conversation exchange.
+    max_call_duration_s: int = 360
+    max_call_turns: int = 16

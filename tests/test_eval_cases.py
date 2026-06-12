@@ -44,3 +44,14 @@ def test_load_case_error_names_file(tmp_path):
     bad.write_text("persona: x\n", encoding="utf-8")  # missing required goal
     with pytest.raises(ValueError, match="broken.yaml"):
         load_case(bad)
+
+
+def test_booking_third_party_case_loads_with_call_facts():
+    from assistant_evals.case import load_case
+
+    case = load_case(Path("packages/evals/cases/restaurant/booking_third_party.yaml"))
+    assert case.goal.call_facts.get("имя брони") == "Victoria"
+    # the owner profile name must differ so the case actually tests the third-party path
+    owner = next((f.value for f in case.facts if f.key.lower() in {"имя", "name"}), None)
+    assert owner and owner != "Victoria"
+    assert case.forbidden_markers  # must forbid the owner-name / role-drift markers

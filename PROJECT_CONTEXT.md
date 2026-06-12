@@ -1,7 +1,7 @@
 # PROJECT_CONTEXT.md - Personal AI Assistant
 
-**Last refreshed:** 2026-06-12 (closeout after PR #10 merge)
-**Status:** PRs #1-#10 merged to `main`. **D-12 (a) DONE:** scenario routing live end-to-end — `SCENARIOS` constant consistency-tested, `normalize.py` extracts `scenario` (unknown → generic), bot confirm card shows scenario with one-tap correction. **D-12 (b) DONE:** eval harness (`packages/evals`) shipped and validated against real models — 6 case YAML cards across 5 scenarios, full Pipecat pipeline with text edges, LLM callee simulator, scripted approvals over the real control list, hybrid scoring, CLI with cost cap, JSON artifacts. Live smoke (haiku agent + judge=sonnet): `doctor/role_drift_probe` 3/3 — D-11 A/B caveat (tool-free, single-turn) now closed. `scripts/eval_role_drift.py` retired (absorbed into harness). See D-13. Turn detection + role drift fixes still awaiting live-call validation (phone needed). Dev stand fragility and supervisor work still pending (D-12 c).
+**Last refreshed:** 2026-06-12 (closeout after the first real outbound call + D-14)
+**Status:** PRs #1-#10 merged to `main`. **First REAL third-party call placed 2026-06-12** (Pizza Parking; transcript pulled from Neon). It exposed two defects, both fixed on branch **`feature/call-data-and-termination` (D-14, not yet merged → PR pending)** and live-validated: (#1) agent stated the owner's name "Nikita" instead of the booking name "Victoria" — root cause: `allowed_facts` is a profile-key whitelist, not a value carrier, so the booking name was dropped before the prompt. Fixed with a new `StructuredGoal.call_facts` channel (NLP → bot card → `DETAILS FOR THIS CALL` prompt block → few-shot rewrite); eval `restaurant/booking_third_party` ×3 says Victoria, never Nikita. (#3) agent never called `end_call`, run stuck `running` — fixed with a stronger prompt rule + a deterministic in-call backstop (`TerminationGuard` duration/turn caps) that guarantees a hangup + terminal status regardless of the LLM. 150 tests pass, ruff clean. Prior context: D-12/D-13 scenario routing + eval harness shipped on `main`. **Still open:** voluntary `end_call` unreliable on haiku (backstop covers prod; model-floor reassessment D-11); role drift at the data stage when a datum is missing (#2); over-claim (#4); STT mishears proper nouns; word-by-word transcript. Dev-stand supervision (D-12 c) still pending. Turn detection still awaiting live audio validation.
 
 ## Current Goal
 
@@ -26,10 +26,12 @@ For the next session, read:
 
 ## Immediate Next Steps
 
-1. **Reliability/supervision** (D-12 c): process supervision + reconnect for api/bot; plan a move off the Cloudflare quick tunnel.
-2. **Few-shot generalisation now measurable** (D-12 d): generalise/scenario-ise the booking-flavoured few-shot using the harness; investigate haiku `end_call`/`propose_summary` omission (dominant reliability gap found in smoke run).
-3. **Case-design follow-ups + fact_key gap**: confirm multi-run behavior of `insurance/cancel_denied` and `generic/approval_expiry` conservative-refusal false-fail before retuning; fix `tools.py` `ActionRequest` missing `fact_key` (fact-access deny branch unreachable from worker in production).
-4. **(needs a phone)** live validation of turn detection + role-holding in full multi-turn context; then EPIC-003 phase D scenarios, EPIC-002 D1 real booking, EPIC-003 C2 (Transfer-to-me) / C3 (Take-over).
+1. **Merge D-14**: open/merge the PR for `feature/call-data-and-termination` (call_facts + termination backstop). Branch is green (150 tests, ruff clean) and live-validated.
+2. **Reliability/supervision** (D-12 c): process supervision + reconnect for api/bot; plan a move off the Cloudflare quick tunnel. (Real cause the test-call run was left `running` was likely worker stop, not just the missing `end_call`.)
+3. **Role drift at the data stage** (#2): the few-shot fixes names; generalise it so the agent acknowledges *missing* data (e.g. party size) instead of asking the callee. Measure with `booking_third_party`/`booking_basic` role axis.
+4. **Voluntary `end_call` / model floor** (D-11): decide whether haiku's low voluntary `end_call` rate warrants a model-floor change or the backstop is sufficient.
+5. **Polish from the real call**: anti-over-claim prompt wording (#4); aggregate transcript to per-utterance + real `ts_ms`; Deepgram keyterm hints from `target_name`/`call_facts` (STT mishears). Plus the standing `fact_key` gap in `tools.py` and the two conservative-refusal eval cases.
+6. **(needs a phone)** re-run the Pizza Parking task to confirm the fixes live; live validation of turn detection + role in full audio; then EPIC-003 phase D, EPIC-002 D1 real booking, EPIC-003 C2/C3.
 
 ## Operational Notes
 
