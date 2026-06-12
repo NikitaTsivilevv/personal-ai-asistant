@@ -121,3 +121,37 @@ def test_normalize_prompt_mentions_scenario_enum():
 
     for name in SCENARIOS:
         assert name in _SYSTEM_PROMPT
+
+
+def test_goal_summary_shows_scenario():
+    from assistant_bot.handlers import _goal_summary
+    from assistant_bot.normalize import NormalizedTask
+
+    n = NormalizedTask(objective="Записаться к врачу", scenario="doctor")
+    assert "doctor" in _goal_summary(n)
+
+
+def test_confirm_keyboard_has_scenario_button():
+    from assistant_bot.handlers import _confirm_keyboard
+
+    callbacks = [b.callback_data for row in _confirm_keyboard().inline_keyboard for b in row]
+    assert "task:confirm" in callbacks
+    assert "task:scenario" in callbacks
+    assert "task:cancel" in callbacks
+
+
+def test_scenario_keyboard_lists_all_scenarios():
+    from assistant_bot.handlers import _scenario_keyboard
+    from assistant_shared.schemas import SCENARIOS
+
+    callbacks = [b.callback_data for row in _scenario_keyboard().inline_keyboard for b in row]
+    assert callbacks == [f"scenario:{s}" for s in SCENARIOS]
+
+
+def test_to_structured_goal_passes_scenario():
+    from assistant_bot.handlers import _to_structured_goal
+    from assistant_bot.normalize import NormalizedTask
+
+    goal = _to_structured_goal(NormalizedTask(objective="x", scenario="insurance"))
+    assert goal.scenario == "insurance"
+    assert goal.objective == "x"
