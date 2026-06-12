@@ -299,7 +299,6 @@ def build_call_pipeline(
         handler = toolbox.handlers[name]
 
         async def wrapper(params: "FunctionCallParams") -> None:
-            nonlocal seq
             if name == "request_approval":
                 _safe_transition(sm, CallState.waiting_approval)
                 await run_client.status(sm.run_status, call_state=sm.state.value)
