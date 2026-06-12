@@ -32,3 +32,15 @@ def test_case_name_includes_scenario_dir():
 
     names = {c.name for c in load_cases(CASES_DIR)}
     assert "doctor/role_drift_probe" in names
+
+
+def test_load_case_error_names_file(tmp_path):
+    import pytest
+
+    from assistant_evals.case import load_case
+
+    bad = tmp_path / "doctor" / "broken.yaml"
+    bad.parent.mkdir()
+    bad.write_text("persona: x\n", encoding="utf-8")  # missing required goal
+    with pytest.raises(ValueError, match="broken.yaml"):
+        load_case(bad)

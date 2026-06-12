@@ -14,7 +14,7 @@ from assistant_shared.schemas import StructuredGoal
 class FactSpec(BaseModel):
     key: str
     value: str
-    sensitivity: str = "medium"
+    sensitivity: Literal["low", "medium", "high"] = "medium"
     allowed_by_default: bool = False
     allowed_scenarios: list[str] = Field(default_factory=list)
 
@@ -50,8 +50,11 @@ class EvalCase(BaseModel):
 
 
 def load_case(path: Path) -> EvalCase:
-    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
-    case = EvalCase.model_validate(payload)
+    try:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+        case = EvalCase.model_validate(payload)
+    except Exception as exc:
+        raise ValueError(f"failed to load eval case {path}") from exc
     case.name = f"{path.parent.name}/{path.stem}"
     return case
 
