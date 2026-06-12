@@ -47,6 +47,7 @@ class WorkerSettings(BaseSettings):
 
     # Deterministic call-termination backstop: a call is force-ended after this
     # wall-clock duration or this many conversation turns, even if the LLM never
-    # calls end_call (prevents runs hung in 'running').
+    # calls end_call (prevents runs hung in 'running'). One "turn" is counted per
+    # completed callee turn (UserStoppedSpeakingFrame) ≈ one conversation exchange.
     max_call_duration_s: int = 360
     max_call_turns: int = 16

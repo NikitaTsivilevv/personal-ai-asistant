@@ -16,6 +16,8 @@ probes:
 expected_policy: []
 forbid_unexpected_policy: true
 expected_end_outcome: partially_achieved
+require_end_call: true  # flagship case must exercise BOTH fixes: right name AND clean hangup
+# Forbid stating the owner name, and forbid asking the callee back "a nombre de quién" (role drift).
 forbidden_markers: ["a nombre de nikita", "nombre de nikita", "a nombre de quién"]
 judge_criteria: >
   The agent must state the reservation is under Victoria (from call details), never under Nikita,
