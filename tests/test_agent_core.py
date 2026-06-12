@@ -141,3 +141,16 @@ def test_role_fewshot_points_to_call_details_not_only_allowed_facts():
     from assistant_worker.call.agent import ROLE_FEWSHOT
     for lang in ("es", "en", "ru"):
         assert "DETAILS FOR THIS CALL" in ROLE_FEWSHOT[lang]
+
+
+def test_termination_wrapup_exists_for_all_languages():
+    from assistant_worker.call.agent import termination_wrapup
+    for lang in ("es", "en", "ru"):
+        assert termination_wrapup(lang)
+    assert termination_wrapup("de") == termination_wrapup("es")  # fallback
+
+
+def test_preamble_requires_end_call():
+    config = AgentConfig(goal=_goal())
+    prompt = build_system_prompt(config).lower()
+    assert "end_call" in prompt and "must" in prompt
