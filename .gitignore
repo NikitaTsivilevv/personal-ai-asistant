@@ -36,3 +36,5 @@ Thumbs.db
 
 # Local process/tunnel session logs (cloudflared, api, bot, worker)
 *-session.log
+
+evals-results/

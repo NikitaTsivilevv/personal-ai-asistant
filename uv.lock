@@ -11,6 +11,7 @@ members = [
     "assistant-api",
     "assistant-bot",
     "assistant-database",
+    "assistant-evals",
     "assistant-policy",
     "assistant-shared",
     "assistant-voice-worker",
@@ -300,6 +301,29 @@ requires-dist = [
     { name = "assistant-shared", editable = "packages/shared" },
     { name = "asyncpg", specifier = ">=0.29" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
+]
+
+[[package]]
+name = "assistant-evals"
+version = "0.1.0"
+source = { editable = "packages/evals" }
+dependencies = [
+    { name = "assistant-policy" },
+    { name = "assistant-shared" },
+    { name = "assistant-voice-worker", extra = ["call"] },
+    { name = "fakeredis" },
+    { name = "openai" },
+    { name = "pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "assistant-policy", editable = "packages/policy" },
+    { name = "assistant-shared", editable = "packages/shared" },
+    { name = "assistant-voice-worker", extras = ["call"], editable = "apps/voice-worker" },
+    { name = "fakeredis", specifier = ">=2.25" },
+    { name = "openai", specifier = ">=1.40" },
+    { name = "pyyaml", specifier = ">=6.0" },
 ]
 
 [[package]]
