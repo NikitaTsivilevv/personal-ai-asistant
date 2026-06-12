@@ -23,7 +23,9 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     run.add_argument("--sim-model", default="claude-haiku-4-5")
     run.add_argument("--judge-model", default="claude-sonnet-4-6")
     run.add_argument("--runs", type=int, default=3)
-    run.add_argument("--max-cost", type=float, default=5.0, help="abort sweep above this USD")
+    run.add_argument("--max-cost", type=float, default=5.0,
+                     help="abort sweep above this USD (sim+judge cost only; "
+                          "agent tokens billed separately)")
     run.add_argument("--out", type=Path, default=Path("evals-results"))
     return parser.parse_args(argv)
 
@@ -58,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     spent = 0.0
     for case in cases:
         for i in range(args.runs):
-            result = asyncio.run(run_case(case, cfg))
+            result = asyncio.run(run_case(case, cfg, run_index=i))
             results.append(result)
             spent += next(a.score for a in result.axes if a.axis == "cost")
             if spent > args.max_cost:

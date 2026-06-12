@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import time
 from dataclasses import dataclass
@@ -18,6 +19,8 @@ from .case import EvalCase
 from .llm_client import OpenAICompatChat
 from .scoring import AxisResult, score_cost, score_policy, score_role, score_success
 from .simulator import CalleeSimulator
+
+logger = logging.getLogger(__name__)
 
 AGENT_TURN_TIMEOUT_S = 90  # generous: includes approval waits
 
@@ -120,6 +123,7 @@ class _LivePipeline:
 
         from assistant_worker.call.agent import disclosure_text
 
+        self.capture.turn_done.clear()
         self.responder.start()
         runner = PipelineRunner(handle_sigint=False)
         self._runner_task = asyncio.create_task(runner.run(self.handles.task))
@@ -136,13 +140,33 @@ class _LivePipeline:
 
         deadline = asyncio.get_event_loop().time() + AGENT_TURN_TIMEOUT_S
         while True:
+            if self._runner_task is not None and self._runner_task.done():
+                exc = self._runner_task.exception()
+                if exc is not None:
+                    raise RuntimeError("pipeline runner crashed during dialog") from exc
+                break  # runner finished cleanly (e.g. agent hung up)
             remaining = deadline - asyncio.get_event_loop().time()
             if remaining <= 0:
                 break
-            try:
-                await asyncio.wait_for(self.capture.turn_done.wait(), remaining)
-            except asyncio.TimeoutError:
-                break
+            wait_set = {asyncio.ensure_future(self.capture.turn_done.wait())}
+            if self._runner_task is not None:
+                wait_set.add(self._runner_task)
+            done, pending = await asyncio.wait(
+                wait_set, timeout=remaining, return_when=asyncio.FIRST_COMPLETED
+            )
+            for fut in pending:
+                if fut is not self._runner_task:
+                    fut.cancel()
+            if not self.capture.turn_done.is_set():
+                # Either timed out or the runner task completed/crashed first.
+                if self._runner_task is not None and self._runner_task.done():
+                    exc = self._runner_task.exception()
+                    if exc is not None:
+                        raise RuntimeError(
+                            "pipeline runner crashed during dialog"
+                        ) from exc
+                    break  # runner finished cleanly (e.g. agent hung up)
+                break  # plain timeout
             await asyncio.sleep(0.3)  # let trailing frames land
             if self._sm.state == CallState.waiting_approval:
                 # Woken by the approval filler; the agent is still blocked on the
@@ -167,6 +191,8 @@ class _LivePipeline:
                 await asyncio.wait_for(self._runner_task, 15)
             except asyncio.TimeoutError:
                 self._runner_task.cancel()
+            except Exception:
+                logger.exception("pipeline runner raised during finish")
         await self.responder.stop()
         toolbox = self.handles.toolbox
         return (toolbox.end_outcome, toolbox.proposed_summary,
@@ -177,32 +203,44 @@ def _build_live_pipeline(case: EvalCase, cfg: EvalConfig) -> _LivePipeline:
     return _LivePipeline(case, cfg)
 
 
-async def run_case(case: EvalCase, cfg: EvalConfig) -> CaseRunResult:
+async def run_case(case: EvalCase, cfg: EvalConfig, run_index: int = 0) -> CaseRunResult:
+    logger.info("eval case start: %s (run_index=%d)", case.name, run_index)
     pipeline = _build_live_pipeline(case, cfg)
     sim_chat = cfg.sim_chat()
     judge_chat = cfg.judge_chat()
     sim = CalleeSimulator(sim_chat, case)
     transcript: list[tuple[str, str]] = []
+    crashed: str | None = None
 
     await pipeline.start()
-    for utterance in await pipeline.agent_turn():  # disclosure (and any greeting)
-        transcript.append(("assistant", utterance))
-    for _ in range(case.max_turns):
-        if getattr(pipeline, "ended", False) or sim.wants_hangup:
-            break
-        callee_text = await sim.next_turn(transcript)
-        if not callee_text:
-            break
-        transcript.append(("callee", callee_text))
-        await pipeline.inject(callee_text)
-        for utterance in await pipeline.agent_turn():
+    try:
+        for utterance in await pipeline.agent_turn():  # disclosure (and any greeting)
             transcript.append(("assistant", utterance))
+        for _ in range(case.max_turns):
+            if pipeline.ended or sim.wants_hangup:
+                break
+            callee_text = await sim.next_turn(transcript)
+            if not callee_text:
+                break
+            transcript.append(("callee", callee_text))
+            await pipeline.inject(callee_text)
+            for utterance in await pipeline.agent_turn():
+                transcript.append(("assistant", utterance))
+    except Exception as exc:  # noqa: BLE001 - contain so the sweep continues
+        crashed = str(exc)
+        logger.exception("eval case dialog crashed: %s", case.name)
     end_outcome, summary, latency_summary, decisions = await pipeline.finish()
 
     approved_sensitive = _approved_sensitive(pipeline.run_client, case)
 
+    if crashed is not None:
+        policy_axis = AxisResult("policy", False, 0.0, f"run crashed: {crashed}")
+    else:
+        policy_axis = score_policy(
+            case, decisions, transcript, approved_sensitive=approved_sensitive
+        )
     axes = [
-        score_policy(case, decisions, transcript, approved_sensitive=approved_sensitive),
+        policy_axis,
         await score_success(case, end_outcome=end_outcome, summary=summary,
                             transcript=transcript, judge=judge_chat),
         await score_role(case, transcript, judge=judge_chat),
@@ -216,7 +254,10 @@ async def run_case(case: EvalCase, cfg: EvalConfig) -> CaseRunResult:
     ]
 
     cfg.out_dir.mkdir(parents=True, exist_ok=True)
-    artifact = cfg.out_dir / f"{case.name.replace('/', '__')}-{int(time.time())}.json"
+    artifact = (
+        cfg.out_dir
+        / f"{case.name.replace('/', '__')}-{int(time.time())}-{run_index}.json"
+    )
     artifact.write_text(json.dumps({
         "case": case.name,
         "agent_model": cfg.agent_model,
@@ -225,7 +266,11 @@ async def run_case(case: EvalCase, cfg: EvalConfig) -> CaseRunResult:
         "summary": summary,
         "policy_decisions": decisions,
         "latency": latency_summary,
+        "events": [list(e) for e in pipeline.run_client.events],
+        "expired_approvals": pipeline.run_client.expired_approvals,
+        "crashed": crashed,
         "axes": [{"axis": a.axis, "passed": a.passed, "score": a.score,
                   "details": a.details} for a in axes],
     }, ensure_ascii=False, indent=2), encoding="utf-8")
+    logger.info("eval case finish: %s (crashed=%s)", case.name, crashed is not None)
     return CaseRunResult(case.name, axes, transcript, artifact)
