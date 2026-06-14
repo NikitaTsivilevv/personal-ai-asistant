@@ -39,7 +39,7 @@ Track unresolved product, architecture, provider, compliance, and UX questions.
 - ~~Which API/backend framework should be used for the MVP?~~ Resolved 2026-06-11 (D-8): FastAPI + aiogram (Python), minimal Next.js web.
 - ~~Which telephony provider should be used for Spain first?~~ Resolved 2026-06-11 (D-5): Twilio.
 - ~~Which exact Deepgram/LLM/Cartesia models and prices to use?~~ Resolved 2026-06-11: Deepgram Nova-3 / Cartesia Sonic / gpt-4o-mini confirmed, ~$0.04/min landline all-in (`docs/research/2026-06-11-provider-pricing.md`). Partially reopened by D-11: conversation LLM is now claude-haiku-4-5 (OpenAI quota ran out); recheck per-minute cost if the model stays.
-- Which conversation model is the floor for reliable caller-role fidelity: claude-haiku-4-5 with a tuned prompt, claude-sonnet-4-6, or gpt-4o-mini? (Live calls 2026-06-11: haiku drifts mid-call.) Partially answered 2026-06-11 (D-11 follow-up): offline A/B shows haiku holds the role 3/3 with the PR #7 few-shot — staying on haiku; needs live multi-turn confirmation.
+- Which conversation model is the floor for reliable caller-role fidelity: claude-haiku-4-5 with a tuned prompt, claude-sonnet-4-6, or gpt-4o-mini? (Live calls 2026-06-11: haiku drifts mid-call.) Partially answered 2026-06-11 (D-11 follow-up): offline A/B shows haiku holds the role 3/3 with the PR #7 few-shot — staying on haiku; needs live multi-turn confirmation. **Reopened 2026-06-14 (D-15 audit):** the D-11 A/B was a single tool-free turn and gave false confidence; the full multi-turn live call regressed. Now planning an A/B on the eval harness of haiku vs **Gemini 2.5 Flash / GPT-4.1** (the candidate production floor per the Daily.co voice-agent benchmark).
 - What pipecat VAD/smart-turn configuration reliably catches short callee replies ("si, dime") and speech overlapping the bot's first utterance? Addressed in code 2026-06-11 (PR #7: tuned `VADParams` + `LocalSmartTurnAnalyzerV3` wired onto the user aggregator; the old `vad_analyzer=` kwarg was a silent no-op); awaiting live validation.
 
 ## Evaluation And Scenario Routing
@@ -50,6 +50,13 @@ Track unresolved product, architecture, provider, compliance, and UX questions.
 - ~~How to make haiku reliably terminate calls (`end_call`/`propose_summary` omission)?~~ Partially resolved 2026-06-12 (D-14): a deterministic in-call backstop (`TerminationGuard` duration/turn caps) guarantees production termination, and rule 6 now says "you MUST call end_call". Still open: *voluntary* `end_call` is unreliable on haiku (live `--runs 5`: 2–5/5 by scenario) — does this warrant a model-floor change (D-11) or is the backstop sufficient?
 - Should transcript segments be aggregated to per-utterance with real timestamps (currently word-by-word with synthetic `ts_ms`), and should `target_name`/`call_facts` feed Deepgram keyterm hints to reduce proper-noun mishears ("Pizza Parking" → "Pisopaylink")? (Found 2026-06-12 on the first real call.)
 - Case design for conservative refusal: `insurance/cancel_denied` and `generic/approval_expiry` expect the agent to *attempt* the gated action; an agent that refuses verbally never triggers the policy engine and fails "missing expected decision". Retune the cases or the policy-axis semantics? (Needs multi-run confirmation first.)
+
+## Dialog Architecture (added 2026-06-14, D-15)
+
+- ~~Is a monolithic single system prompt the right structure for the dialog?~~ Direction set 2026-06-14 (D-15): no — migrate to a flow / state-machine model (**Pipecat Flows**) with per-node scoped tools/sub-prompt; the concrete node graph is to be defined via brainstorm → spec → plan.
+- How should the policy engine and approvals embed in a Flows graph — per-node tool gating vs. the current single always-available tool set? (Execution-time question for the re-platform.)
+- Does the Flows re-platform warrant its own epic, or extend EPIC-002? (Decide during planning.)
+- Audio-in-the-loop eval tier (TTS→STT→agent) so STT mishears and the termination backstop are exercised: what's the cheapest faithful setup — recorded real audio replay vs. synthesized-TTS calls?
 
 ## Commercialization And Compliance
 
